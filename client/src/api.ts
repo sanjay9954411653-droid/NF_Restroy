@@ -294,10 +294,6 @@ export const subscriptionApi = {
   getPlans: () =>
     api.get('/subscription-plans'),
 
-  // Switch plan (ADMIN)
-  changePlan: (planId: string) =>
-    api.post('/subscriptions/change-plan', { plan_id: planId }),
-
        // Create Razorpay monthly subscription (ADMIN)
   createRazorpaySubscription: (planId: string) =>
     api.post('/subscriptions/create-razorpay-subscription', { plan_id: planId }),
@@ -306,11 +302,6 @@ export const subscriptionApi = {
   getInvoices: (params?: any) =>
     api.get('/invoices', { params }),
 
-  createInvoice: (data: { amount: number; due_date?: string; notes?: string; status?: string }) =>
-    api.post('/invoices', data),
-
-  markInvoicePaid: (id: string) =>
-    api.post(`/invoices/${id}/mark-paid`, {}),
 
   // Super-admin only
   getPlatformMetrics: () =>
