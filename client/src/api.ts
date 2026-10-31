@@ -319,6 +319,9 @@ export const subscriptionApi = {
   adminGenerateInvoice: (restaurantId: string, amount: number, notes?: string) =>
     api.post(`/subscriptions/admin/generate-invoice/${restaurantId}`, { amount, notes }),
 
+  adminRecordPayment: (restaurantId: string, planId: string, amount: number, notes?: string) =>
+    api.post(`/subscriptions/admin/record-payment/${restaurantId}`, { plan_id: planId, amount, notes }),
+
   adminMarkInvoicePaid: (id: string) =>
     api.post(`/subscriptions/invoices/${id}/mark-paid`, {}),
 }
