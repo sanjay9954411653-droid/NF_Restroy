@@ -161,21 +161,19 @@ export interface RazorpaySubscriptionResult {
 export async function createRazorpaySubscription(
   planId: string,
   customerNotify = true,
+  notes: Record<string, string> = {},
 ): Promise<RazorpaySubscriptionResult> {
   const rz = getRazorpay();
 
-  console.log('[Razorpay] Creating subscription with plan:', planId);
-  console.log(
-    '[Razorpay][DEBUG] Using key_id:',
-    JSON.stringify(env.RAZORPAY_KEY_ID), // JSON.stringify reveals any stray spaces/newlines
-    '| length:', env.RAZORPAY_KEY_ID.length,
-  );
-  
+  // notes carry restaurant_id/plan_id so the webhook can tell which restaurant paid.
+  // total_count = max number of billing cycles; 120 = 10 years of monthly billing
+  // (a low number silently stops billing — and then suspends the restaurant).
   const subscription = await rz.subscriptions.create({
     plan_id: planId,
-    total_count: 12,
+    total_count: 120,
     quantity: 1,
     customer_notify: customerNotify ? 1 : 0,
+    notes,
   });
 
   return {
