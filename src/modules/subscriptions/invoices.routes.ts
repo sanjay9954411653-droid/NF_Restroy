@@ -10,14 +10,9 @@ router.get('/', authenticate, (req, res, next) =>
   subscriptionsController.getInvoices(req, res, next),
 );
 
-// Create an invoice for own restaurant (ADMIN)
-router.post('/', authenticate, authorize('ADMIN'), (req, res, next) =>
-  subscriptionsController.createInvoice(req, res, next),
-);
-
-// Mark own restaurant's invoice as paid (ADMIN)
-router.post('/:id/mark-paid', authenticate, authorize('ADMIN'), (req, res, next) =>
-  subscriptionsController.markInvoicePaid(req, res, next),
-);
+// NOTE: restaurants can only VIEW invoices. Creating invoices and marking them
+// paid is platform-owner-only (see /subscriptions/admin/* and
+// /subscriptions/invoices/:id/mark-paid) — otherwise a restaurant could mark its
+// own bill paid and keep its account active for free.
 
 export default router;

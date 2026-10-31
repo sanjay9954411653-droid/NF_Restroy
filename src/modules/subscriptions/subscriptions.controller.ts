@@ -66,9 +66,26 @@ export class SubscriptionsController {
         return;
       }
 
+      // Don't start a second recurring charge while one is already running.
+      const state = await subscriptionsService.getGatewayState(restaurantId);
+      if (state?.status === 'ACTIVE' && state.gateway_subscription_id) {
+        res.status(409).json({
+          success: false,
+          error: { message: 'You already have an active subscription. Contact support to change your plan.' },
+        });
+        return;
+      }
+
       const razorpaySubscription = await createRazorpaySubscription(
         plan.gateway_plan_id,
         true,
+        { restaurant_id: restaurantId, plan_id: plan.id },
+      );
+
+      // Remember it so the webhook can match the payment back to this restaurant.
+      await subscriptionsService.linkGatewaySubscription(
+        restaurantId,
+        razorpaySubscription.razorpay_subscription_id,
       );
 
       res.status(201).json(
@@ -154,6 +171,16 @@ export class SubscriptionsController {
       const offset = parseInt(req.query.offset as string) || 0;
       const result = await subscriptionsService.getAllRestaurantsWithStatus(search, status, limit, offset);
       res.status(200).json(successResponse(result.restaurants, { pagination: { total: result.total, limit, offset } }));
+    } catch (error) { next(error); }
+  }
+
+  // POST /subscriptions/admin/change-plan/:restaurantId (super-admin only —
+  // activates the plan without payment, so restaurants must never reach this)
+  async adminChangePlan(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { plan_id } = ChangePlanSchema.parse(req.body);
+      const view = await subscriptionsService.changePlan(req.params.restaurantId, plan_id);
+      res.status(200).json(successResponse(view, { message: 'Plan changed successfully' }));
     } catch (error) { next(error); }
   }
 

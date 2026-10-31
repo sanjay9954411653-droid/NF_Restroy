@@ -124,6 +124,112 @@ export class SubscriptionsService {
     return sub.status;
   }
 
+  /** Add one billing cycle (monthly by default; YEARLY adds a year). */
+  private addCycle(from: Date, cycle: string): Date {
+    const d = new Date(from);
+    if (cycle === 'YEARLY') d.setFullYear(d.getFullYear() + 1);
+    else d.setMonth(d.getMonth() + 1);
+    return d;
+  }
+
+  /** Subscription fields the Razorpay checkout flow needs (no reconcile side effects). */
+  async getGatewayState(restaurantId: string) {
+    const sub = await subscriptionsRepository.findByRestaurantId(restaurantId);
+    return sub
+      ? { status: sub.status, gateway_subscription_id: sub.gateway_subscription_id }
+      : null;
+  }
+
+  /** Remember which Razorpay subscription a restaurant is paying through. */
+  async linkGatewaySubscription(restaurantId: string, gatewaySubscriptionId: string): Promise<void> {
+    let sub = await subscriptionsRepository.findByRestaurantId(restaurantId);
+    if (!sub) sub = await subscriptionsRepository.createTrial(restaurantId, TRIAL_DAYS);
+    await subscriptionsRepository.update(sub.id, { gateway_subscription_id: gatewaySubscriptionId });
+  }
+
+  /**
+   * Razorpay subscription webhooks. This is what actually turns a customer's
+   * successful card/UPI mandate payment into an ACTIVE subscription — without it
+   * a restaurant can pay Razorpay every month and still get suspended here.
+   *   subscription.activated / .charged → ACTIVE until the paid period's end
+   *   subscription.halted               → payments kept failing → grace period
+   *   subscription.cancelled / .completed → no more auto-renewals (access runs to expiry)
+   */
+  async handleRazorpaySubscriptionEvent(event: string, subEntity: any, paymentEntity: any): Promise<void> {
+    if (!subEntity?.id) return;
+
+    let sub = await subscriptionsRepository.findByGatewaySubscriptionId(subEntity.id);
+    if (!sub && subEntity.notes?.restaurant_id) {
+      sub = await subscriptionsRepository.findByRestaurantId(String(subEntity.notes.restaurant_id));
+    }
+    if (!sub) {
+      console.warn(`[Razorpay] ${event}: no restaurant found for subscription ${subEntity.id}`);
+      return;
+    }
+
+    switch (event) {
+      case 'subscription.activated':
+      case 'subscription.charged': {
+        let plan: SubscriptionPlan | null = null;
+        if (subEntity.notes?.plan_id) plan = await subscriptionsRepository.findPlanById(String(subEntity.notes.plan_id)).catch(() => null);
+        if (!plan && subEntity.plan_id) plan = await subscriptionsRepository.findPlanByGatewayId(subEntity.plan_id);
+
+        const now = new Date();
+        const periodEnd =
+          typeof subEntity.current_end === 'number'
+            ? new Date(subEntity.current_end * 1000)
+            : this.addCycle(now, plan?.billing_cycle ?? 'MONTHLY');
+
+        await subscriptionsRepository.update(sub.id, {
+          plan_id: plan?.id ?? sub.plan_id,
+          status: 'ACTIVE',
+          started_at: sub.status === 'ACTIVE' && sub.started_at ? sub.started_at : now,
+          expires_at: periodEnd,
+          grace_period_ends_at: null,
+          gateway_subscription_id: subEntity.id,
+        });
+
+        // Keep a PAID invoice on record for each charge (deduped by Razorpay payment id).
+        if (event === 'subscription.charged' && paymentEntity?.id) {
+          const note = `Razorpay payment ${paymentEntity.id}`;
+          if (!(await subscriptionsRepository.invoiceExistsWithNotes(sub.restaurant_id, note))) {
+            const inv = await subscriptionsRepository.createInvoice(
+              sub.restaurant_id,
+              sub.id,
+              Number(paymentEntity.amount || 0) / 100,
+              null,
+              'PAID',
+              note,
+            );
+            await subscriptionsRepository.markInvoicePaid(inv.id);
+          }
+        }
+        break;
+      }
+
+      case 'subscription.halted': {
+        // Razorpay gave up retrying the charge. Give the restaurant the normal grace window.
+        if (sub.status === 'ACTIVE') {
+          await subscriptionsRepository.update(sub.id, {
+            status: 'GRACE_PERIOD',
+            grace_period_ends_at: new Date(Date.now() + GRACE_DAYS * 24 * 60 * 60 * 1000),
+          });
+        }
+        break;
+      }
+
+      case 'subscription.cancelled':
+      case 'subscription.completed': {
+        // No more auto-charges. Access continues until expires_at, then lapses normally.
+        await subscriptionsRepository.update(sub.id, { gateway_subscription_id: null });
+        break;
+      }
+
+      default:
+        break;
+    }
+  }
+
   // ── Plans ──────────────────────────────────────────────────────────────────
 
   async getPlans(): Promise<SubscriptionPlan[]> {
@@ -223,16 +329,21 @@ export class SubscriptionsService {
     const paid = await subscriptionsRepository.markInvoicePaid(invoiceId);
     if (!paid) throw new NotFoundError('Invoice not found');
 
-    // Reactivate the subscription out of grace/suspended on payment.
+    // Paying an invoice (always confirmed by the platform owner) grants one more
+    // billing cycle. Extends from the current expiry when still in the paid window,
+    // so paying early never loses days; lapsed accounts restart from today.
     const sub = await subscriptionsRepository.findByRestaurantId(invoice.restaurant_id);
-    if (sub && (sub.status === 'GRACE_PERIOD' || sub.status === 'SUSPENDED')) {
+    if (sub) {
+      const plan = sub.plan_id ? await subscriptionsRepository.findPlanById(sub.plan_id) : null;
       const now = new Date();
-      const expiresAt = new Date(now);
-      expiresAt.setMonth(expiresAt.getMonth() + 1);
+      const base =
+        sub.status === 'ACTIVE' && sub.expires_at && new Date(sub.expires_at) > now
+          ? new Date(sub.expires_at)
+          : now;
       await subscriptionsRepository.update(sub.id, {
         status: 'ACTIVE',
-        started_at: now,
-        expires_at: expiresAt,
+        started_at: sub.status === 'ACTIVE' && sub.started_at ? sub.started_at : now,
+        expires_at: this.addCycle(base, plan?.billing_cycle ?? 'MONTHLY'),
         grace_period_ends_at: null,
       });
     }

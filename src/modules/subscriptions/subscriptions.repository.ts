@@ -54,6 +54,30 @@ export class SubscriptionsRepository {
     return result.rows[0] || null;
   }
 
+  async findByGatewaySubscriptionId(gatewayId: string): Promise<Subscription | null> {
+    const result = await query(
+      `SELECT ${SUB_COLS} FROM subscriptions WHERE gateway_subscription_id = $1 LIMIT 1`,
+      [gatewayId],
+    );
+    return result.rows[0] || null;
+  }
+
+  async findPlanByGatewayId(gatewayPlanId: string): Promise<SubscriptionPlan | null> {
+    const result = await query(
+      `SELECT ${PLAN_COLS} FROM subscription_plans WHERE gateway_plan_id = $1 LIMIT 1`,
+      [gatewayPlanId],
+    );
+    return result.rows[0] || null;
+  }
+
+  async invoiceExistsWithNotes(restaurantId: string, notes: string): Promise<boolean> {
+    const result = await query(
+      `SELECT 1 FROM invoices WHERE restaurant_id = $1 AND notes = $2 LIMIT 1`,
+      [restaurantId, notes],
+    );
+    return result.rows.length > 0;
+  }
+
   async findById(subscriptionId: string): Promise<Subscription | null> {
     const result = await query(
       `SELECT ${SUB_COLS} FROM subscriptions WHERE id = $1 LIMIT 1`,
@@ -221,7 +245,7 @@ export class SubscriptionsRepository {
         COUNT(*) FILTER (WHERE s.status = 'GRACE_PERIOD') AS grace_period_accounts,
         COUNT(*) FILTER (WHERE s.status = 'SUSPENDED')    AS suspended_accounts,
         COUNT(*) FILTER (WHERE s.status = 'CANCELLED')    AS cancelled_accounts,
-        COALESCE(SUM(p.price) FILTER (WHERE s.status = 'ACTIVE' AND p.billing_cycle = 'MONTHLY'), 0) AS mrr,
+        COALESCE(SUM(CASE WHEN p.billing_cycle = 'YEARLY' THEN p.price / 12 ELSE p.price END) FILTER (WHERE s.status = 'ACTIVE' AND p.billing_cycle IN ('MONTHLY', 'YEARLY')), 0) AS mrr,
         (SELECT COUNT(*) FROM invoices WHERE status IN ('PENDING', 'OVERDUE'))         AS outstanding_invoices,
         (SELECT COALESCE(SUM(amount), 0) FROM invoices WHERE status IN ('PENDING', 'OVERDUE')) AS outstanding_amount
       FROM subscriptions s

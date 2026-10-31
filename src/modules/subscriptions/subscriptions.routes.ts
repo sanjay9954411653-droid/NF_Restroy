@@ -19,6 +19,10 @@ router.get('/all-restaurants', authenticate, superAdmin, (req, res, next) =>
 router.post('/invoices/:id/mark-paid', authenticate, superAdmin, (req, res, next) =>
   subscriptionsController.adminMarkInvoicePaid(req, res, next),
 );
+// Change a restaurant's plan WITHOUT payment (manual/offline billing, comps)
+router.post('/admin/change-plan/:restaurantId', authenticate, superAdmin, (req, res, next) =>
+  subscriptionsController.adminChangePlan(req, res, next),
+);
 // Suspend a restaurant
 router.post('/admin/suspend/:restaurantId', authenticate, superAdmin, (req, res, next) =>
   subscriptionsController.adminSuspend(req, res, next),
@@ -36,11 +40,6 @@ router.post('/admin/generate-invoice/:restaurantId', authenticate, superAdmin, (
 // Current restaurant's subscription (enriched view)
 router.get('/me', authenticate, (req, res, next) =>
   subscriptionsController.getMySubscription(req, res, next),
-);
-
-// Change plan (ADMIN)
-router.post('/change-plan', authenticate, authorize('ADMIN'), (req, res, next) =>
-  subscriptionsController.changePlan(req, res, next),
 );
 
 // Create Razorpay subscription (ADMIN)
