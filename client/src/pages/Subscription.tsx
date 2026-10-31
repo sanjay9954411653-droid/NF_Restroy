@@ -3,7 +3,8 @@
  *
  * Shows current plan, status, trial/grace countdown, next renewal, the plan
  * catalogue (with a one-click change), and the restaurant's invoices with a
- * "Mark as paid" action (Phase 1 = manual UPI / bank transfer / cash).
+ * invoice history. Plans are paid through Razorpay; only the platform owner can
+ * mark an invoice paid (offline UPI / bank transfer / cash).
  */
 import { useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
@@ -16,7 +17,6 @@ import Button from '../components/Button'
 import Loading from '../components/Loading'
 import { formatCurrency, formatDate } from '../lib/utils'
 import {
-  CheckCircleIcon,
   ClockIcon,
   CreditCardIcon,
   DocumentTextIcon,
@@ -40,7 +40,6 @@ const Subscription: React.FC = () => {
   const [invoices, setInvoices] = useState<Invoice[]>([])
   const [loading, setLoading] = useState(true)
   const [changingPlan, setChangingPlan] = useState<string | null>(null)
-  const [payingId, setPayingId] = useState<string | null>(null)
 
   const load = async () => {
     try {
@@ -58,6 +57,13 @@ const Subscription: React.FC = () => {
   }
 
   useEffect(() => { load() }, [])
+
+  // Coming back from the Razorpay checkout tab/app: pick up the new status.
+  useEffect(() => {
+    const onFocus = () => { load(); refresh() }
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  }, [refresh])
 
     const handleChangePlan = async (planId: string) => {
     if (!confirm('Subscribe to this plan using Razorpay?')) return
@@ -80,19 +86,6 @@ const Subscription: React.FC = () => {
       setChangingPlan(null)
     }
     }
-
-  const handleMarkPaid = async (id: string) => {
-    setPayingId(id)
-    try {
-      await subscriptionApi.markInvoicePaid(id)
-      toast.success('Invoice marked as paid')
-      await Promise.all([load(), refresh()])
-    } catch (err) {
-      toast.error(getErrorMessage(err))
-    } finally {
-      setPayingId(null)
-    }
-  }
 
   if (subLoading || loading) return <Loading text="Loading subscription…" />
 
@@ -214,17 +207,6 @@ const Subscription: React.FC = () => {
                   </div>
                   <div className="flex items-center gap-3 shrink-0">
                     <span className="font-semibold text-gray-900">{formatCurrency(inv.amount)}</span>
-                    {(inv.status === 'PENDING' || inv.status === 'OVERDUE') && (
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        leftIcon={<CheckCircleIcon className="w-4 h-4" />}
-                        isLoading={payingId === inv.id}
-                        onClick={() => handleMarkPaid(inv.id)}
-                      >
-                        Mark Paid
-                      </Button>
-                    )}
                   </div>
                 </div>
               ))}
@@ -232,7 +214,7 @@ const Subscription: React.FC = () => {
           )}
         </Card>
         <p className="text-xs text-gray-400 mt-2">
-          Payments are accepted via UPI, bank transfer, or cash. Mark an invoice as paid once payment is received.
+          Plans renew automatically through Razorpay. For UPI, bank transfer or cash payments, contact support and your invoice will be marked paid once received.
         </p>
       </div>
     </div>
