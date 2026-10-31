@@ -20,6 +20,7 @@ import { eventBroadcaster } from '@/shared/socket/eventBroadcaster';
 import { publicOrderRateLimiter } from '@/shared/middleware/rateLimiter';
 import { env } from '@/config/env';
 import { createRazorpayOrder } from '@/modules/payments/gateways/razorpay.gateway';
+import { getOrderPayableTotal } from '@/shared/billing';
 import { modifierRepository } from '@/modules/modifiers/modifier.repository'; import { pushService } from '@/modules/push/push.service';
 import { z } from 'zod';
 
@@ -679,12 +680,20 @@ router.post('/order/:slug', publicOrderRateLimiter, async (req: Request, res: Re
       }
     }
 
+    // What the customer actually owes: item total (after coupon/points) plus the
+    // restaurant's service charge, other charges and GST — same figure the cart and
+    // the staff Bill screen show. Charging bare totalAmount under-collected the GST.
+    const payableTotal =
+      payload.payment_method && payload.payment_method !== 'CASH'
+        ? await getOrderPayableTotal((t, p) => query(t, p), restaurantId, totalAmount)
+        : totalAmount;
+
     // If payment method is not CASH, create a pending payment record
     if (payload.payment_method && payload.payment_method !== 'CASH') {
       await query(
         `INSERT INTO payments (restaurant_id, order_id, amount, method, status)
          VALUES ($1, $2, $3, $4, 'PENDING')`,
-        [restaurantId, order.id, totalAmount, payload.payment_method],
+        [restaurantId, order.id, payableTotal, payload.payment_method],
       );
     }
 
@@ -703,7 +712,7 @@ router.post('/order/:slug', publicOrderRateLimiter, async (req: Request, res: Re
 
     if (isOnlinePayment) {
       try {
-        razorpayData = await createRazorpayOrder(order.id, totalAmount);
+        razorpayData = await createRazorpayOrder(order.id, payableTotal);
 
         await query(
           `UPDATE payments
