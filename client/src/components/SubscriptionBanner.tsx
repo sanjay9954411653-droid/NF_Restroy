@@ -11,6 +11,7 @@
  */
 import { Link } from 'react-router-dom'
 import { useSubscription } from '../contexts/SubscriptionContext'
+import { useAuth } from '../contexts/AuthContext'
 import {
   ClockIcon,
   ExclamationTriangleIcon,
@@ -19,6 +20,9 @@ import {
 
 const SubscriptionBanner: React.FC = () => {
   const { subscription } = useSubscription()
+  const { user } = useAuth()
+  // Platform owner manages billing for others; their own workspace isn't billed.
+  if (user?.isSuperAdmin) return null
   if (!subscription) return null
 
   const { status, days_remaining, grace_days_remaining } = subscription
