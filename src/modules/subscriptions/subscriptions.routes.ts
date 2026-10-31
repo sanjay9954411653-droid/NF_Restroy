@@ -23,6 +23,10 @@ router.post('/invoices/:id/mark-paid', authenticate, superAdmin, (req, res, next
 router.post('/admin/change-plan/:restaurantId', authenticate, superAdmin, (req, res, next) =>
   subscriptionsController.adminChangePlan(req, res, next),
 );
+// Record cash / UPI / bank-transfer money received (activates + keeps a PAID invoice)
+router.post('/admin/record-payment/:restaurantId', authenticate, superAdmin, (req, res, next) =>
+  subscriptionsController.adminRecordPayment(req, res, next),
+);
 // Suspend a restaurant
 router.post('/admin/suspend/:restaurantId', authenticate, superAdmin, (req, res, next) =>
   subscriptionsController.adminSuspend(req, res, next),

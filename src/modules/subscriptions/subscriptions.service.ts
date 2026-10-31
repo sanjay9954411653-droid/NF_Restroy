@@ -453,6 +453,45 @@ export class SubscriptionsService {
   }
 
   /**
+   * Record money collected outside Razorpay (cash / UPI / bank transfer).
+   * One step: sets the plan, activates (or extends) the subscription by one
+   * billing cycle, and keeps a PAID invoice on file so revenue is tracked.
+   */
+  async recordOfflinePayment(
+    restaurantId: string,
+    planId: string,
+    amount: number,
+    notes?: string,
+  ): Promise<Invoice> {
+    if (!(amount > 0)) throw new BadRequestError('Amount must be greater than 0');
+    const plan = await subscriptionsRepository.findPlanById(planId);
+    if (!plan || !plan.is_active) throw new BadRequestError('Plan not found or inactive');
+
+    let sub = await subscriptionsRepository.findByRestaurantId(restaurantId);
+    if (!sub) sub = await subscriptionsRepository.createTrial(restaurantId, TRIAL_DAYS);
+
+    const now = new Date();
+    const stillPaid = sub.status === 'ACTIVE' && sub.expires_at && new Date(sub.expires_at) > now;
+    await subscriptionsRepository.update(sub.id, {
+      plan_id: plan.id,
+      status: 'ACTIVE',
+      started_at: sub.status === 'ACTIVE' && sub.started_at ? sub.started_at : now,
+      expires_at: this.addCycle(stillPaid ? new Date(sub.expires_at as Date) : now, plan.billing_cycle),
+      grace_period_ends_at: null,
+    });
+
+    const invoice = await subscriptionsRepository.createInvoice(
+      restaurantId,
+      sub.id,
+      amount,
+      null,
+      'PAID',
+      notes?.trim() || 'Offline payment (cash / UPI / bank transfer)',
+    );
+    return (await subscriptionsRepository.markInvoicePaid(invoice.id)) ?? invoice;
+  }
+
+  /**
    * Generate an invoice for a restaurant (super-admin action).
    */
   async generateInvoiceForRestaurant(

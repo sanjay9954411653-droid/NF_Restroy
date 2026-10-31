@@ -184,6 +184,21 @@ export class SubscriptionsController {
     } catch (error) { next(error); }
   }
 
+  // POST /subscriptions/admin/record-payment/:restaurantId (super-admin only)
+  async adminRecordPayment(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { plan_id, amount, notes } = req.body || {};
+      if (!plan_id || !(Number(amount) > 0)) {
+        res.status(400).json({ success: false, error: { message: 'plan_id and a positive amount are required' } });
+        return;
+      }
+      const invoice = await subscriptionsService.recordOfflinePayment(
+        req.params.restaurantId, String(plan_id), Number(amount), notes ? String(notes).slice(0, 500) : undefined,
+      );
+      res.status(201).json(successResponse(invoice, { message: 'Payment recorded' }));
+    } catch (error) { next(error); }
+  }
+
   // POST /subscriptions/admin/suspend/:restaurantId
   async adminSuspend(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
     try {
