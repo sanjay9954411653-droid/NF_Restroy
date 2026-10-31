@@ -50,7 +50,8 @@ export const SubscriptionProvider: React.FC<{ children: ReactNode }> = ({ childr
   useEffect(() => { refresh() }, [refresh])
 
   const isReadOnly =
-    subscription?.status === 'SUSPENDED' || subscription?.status === 'CANCELLED'
+    !user?.isSuperAdmin &&
+    (subscription?.status === 'SUSPENDED' || subscription?.status === 'CANCELLED')
 
   return (
     <SubscriptionContext.Provider value={{ subscription, loading, isReadOnly, refresh }}>
