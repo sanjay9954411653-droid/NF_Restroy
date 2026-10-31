@@ -4,6 +4,7 @@ import { subscriptionsService } from '@/modules/subscriptions/subscriptions.serv
 import { WRITE_ALLOWED_STATUSES } from '@/modules/subscriptions/subscriptions.types';
 import { errorResponse } from '@/shared/utils/responseHandler';
 import { env } from '@/config/env';
+import { isSuperAdminEmail } from '@/shared/utils/superAdmin';
 
 export async function checkSubscription(
   req: AuthenticatedRequest,
@@ -13,6 +14,11 @@ export async function checkSubscription(
   try {
     const restaurantId = req.user?.restaurantId;
     if (!restaurantId) {
+      return next();
+    }
+
+    // Platform owner (SUPER_ADMIN_EMAILS) is never locked out by billing.
+    if (isSuperAdminEmail(req.user?.email)) {
       return next();
     }
 
