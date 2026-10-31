@@ -20,6 +20,7 @@ import { Router, Request, Response } from 'express';
 import { query } from '@/config/database';
 import { verifyWebhookSignature } from './gateways/razorpay.gateway';
 import { eventBroadcaster } from '@/shared/socket/eventBroadcaster';
+import { subscriptionsService } from '@/modules/subscriptions/subscriptions.service';
 
 const router = Router();
 
@@ -59,10 +60,21 @@ router.post('/razorpay', async (req: Request, res: Response) => {
     const event = req.body?.event as string;
     const paymentEntity = req.body?.payload?.payment?.entity;
     const refundEntity  = req.body?.payload?.refund?.entity;
+    const subscriptionEntity = req.body?.payload?.subscription?.entity;
 
     console.log(`[Razorpay Webhook] Event: ${event}`);
 
-    if (event === 'payment.captured' && paymentEntity) {
+    if (typeof event === 'string' && event.startsWith('subscription.')) {
+      // SaaS billing: the restaurant's own subscription to AuraOS.
+      try {
+        await subscriptionsService.handleRazorpaySubscriptionEvent(event, subscriptionEntity, paymentEntity);
+      } catch (err) {
+        // Non-200 → Razorpay retries, so a paid restaurant is never left un-activated.
+        console.error(`[Razorpay Webhook] ${event} failed:`, err);
+        res.status(500).json({ received: false, error: 'Processing error' });
+        return;
+      }
+    } else if (event === 'payment.captured' && paymentEntity) {
       await handlePaymentCaptured(paymentEntity);
     } else if (event === 'payment.failed' && paymentEntity) {
       await handlePaymentFailed(paymentEntity);
