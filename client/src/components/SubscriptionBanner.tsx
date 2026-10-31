@@ -46,14 +46,17 @@ const SubscriptionBanner: React.FC = () => {
 
   if (status === 'GRACE_PERIOD') {
     const d = grace_days_remaining ?? 0
+    // Never paid (no plan chosen yet) = the free trial ran out, not an overdue bill.
+    const trialLapsed = !subscription.plan_id && !subscription.started_at
     return (
       <div className="flex items-center gap-2 px-4 py-2.5 bg-amber-50 border-b border-amber-200 text-sm">
         <ExclamationTriangleIcon className="w-4 h-4 text-amber-500 shrink-0" />
         <span className="text-amber-800">
-          Payment overdue. <strong>{d} day{d !== 1 ? 's' : ''}</strong> remaining before your account is suspended.
+          {trialLapsed ? 'Your free trial has ended.' : 'Payment overdue.'}{' '}
+          <strong>{d} day{d !== 1 ? 's' : ''}</strong> remaining before your account is suspended.
         </span>
         <Link to="/subscription" className="ml-auto font-medium text-amber-700 hover:text-amber-900 whitespace-nowrap">
-          Pay now →
+          {trialLapsed ? 'Choose a plan →' : 'Pay now →'}
         </Link>
       </div>
     )
