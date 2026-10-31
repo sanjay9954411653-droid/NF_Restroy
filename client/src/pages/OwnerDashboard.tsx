@@ -221,6 +221,29 @@ const RestaurantsTab: React.FC = () => {
     catch (e) { toast.error(getErrorMessage(e)) }
   }
 
+  // Cash / UPI / bank transfer received from a restaurant: pick plan + amount,
+  // and the account is activated for one billing cycle with a PAID invoice on file.
+  const handleRecordPayment = async (id: string, name: string) => {
+    try {
+      const plans = ((await subscriptionApi.getPlans()).data.data || []).filter((p: any) => p.price > 0)
+      if (plans.length === 0) { toast.error('No paid plans found'); return }
+      const menu = plans.map((p: any, i: number) => `${i + 1}) ${p.name} — ₹${p.price}/${String(p.billing_cycle).toLowerCase()}`).join('\n')
+      const pick = prompt(`Payment received from ${name}.\nChoose plan number:\n${menu}`)
+      if (!pick) return
+      const plan = plans[parseInt(pick, 10) - 1]
+      if (!plan) { toast.error('Invalid plan number'); return }
+      const amt = prompt('Amount received (₹):', String(plan.price))
+      if (!amt) return
+      const amount = parseFloat(amt)
+      if (!amount || amount <= 0) { toast.error('Invalid amount'); return }
+      setBusy(id)
+      await subscriptionApi.adminRecordPayment(id, plan.id, amount, 'Cash / offline payment')
+      toast.success(`${name} activated on ${plan.name}`)
+      fetch()
+    } catch (e) { toast.error(getErrorMessage(e)) }
+    finally { setBusy(null) }
+  }
+
   const toggleFeature = async (restaurantId: string, key: string, current: boolean) => {
     try {
       await api.put(`/admin/restaurants/${restaurantId}/features`, { features: { [key]: !current } })
@@ -265,6 +288,7 @@ const RestaurantsTab: React.FC = () => {
                         <button onClick={() => loadDetail(r.id)} title="View Detail" className="p-1.5 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded-lg"><EyeIcon className="w-4 h-4" /></button>
                         {!['SUSPENDED','CANCELLED'].includes(r.subscription_status) && <button onClick={() => handleSuspend(r.id)} title="Suspend" className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg"><PauseCircleIcon className="w-4 h-4" /></button>}
                         {['SUSPENDED','TRIAL','GRACE_PERIOD'].includes(r.subscription_status) && <button onClick={() => handleActivate(r.id)} title="Activate" className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg"><PlayCircleIcon className="w-4 h-4" /></button>}
+                        <button onClick={() => handleRecordPayment(r.id, r.name)} title="Record cash payment" className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg"><BanknotesIcon className="w-4 h-4" /></button>
                         <button onClick={() => handleInvoice(r.id, r.name)} title="Invoice" className="p-1.5 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded-lg"><CurrencyDollarIcon className="w-4 h-4" /></button>
                       </div>
                     </td>
