@@ -9,6 +9,7 @@ import { formatCurrency } from '../lib/utils'
 import Card from '../components/Card'
 import Loading from '../components/Loading'
 import Badge from '../components/Badge'
+import PaymentModeReport from '../components/PaymentModeReport'
 import {
   CurrencyDollarIcon,
   ClipboardDocumentListIcon,
@@ -138,6 +139,9 @@ const Reports: React.FC = () => {
           </Card>
         ))}
       </div>
+
+      {/* Cash / UPI / Card / Online collections */}
+      <PaymentModeReport />
 
       {/* Revenue chart */}
       <Card>
