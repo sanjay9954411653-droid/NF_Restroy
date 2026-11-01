@@ -8,6 +8,19 @@ export const DailyRevenueQuerySchema = z.object({
   days: z.preprocess((value) => Number(value), z.number().int().min(1).max(90).default(7)),
 });
 
+const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD');
+
+export const PaymentModesQuerySchema = z
+  .object({
+    from: isoDate,
+    to: isoDate,
+    // Browser's IANA time zone (e.g. Asia/Kolkata) so "today" means the restaurant's today, not UTC's.
+    tz: z.string().max(64).optional(),
+  })
+  .refine((q) => q.from <= q.to, { message: '"from" must not be after "to"' });
+
+export type PaymentModesQuery = z.infer<typeof PaymentModesQuerySchema>;
+
 export type TopItemsQuery = z.infer<typeof TopItemsQuerySchema>;
 export type DailyRevenueQuery = z.infer<typeof DailyRevenueQuerySchema>;
 
@@ -29,6 +42,25 @@ export interface TopSellingItem {
   name: string;
   total_quantity: number;
   total_revenue: number;
+}
+
+export interface PaymentModeRow {
+  method: 'CASH' | 'UPI' | 'CARD' | 'ONLINE';
+  paid_amount: number;
+  paid_count: number;
+  refunded_amount: number;
+  pending_amount: number;
+}
+
+export interface PaymentModesReport {
+  from: string;
+  to: string;
+  tz: string;
+  modes: PaymentModeRow[];
+  total_paid: number;
+  total_paid_count: number;
+  total_refunded: number;
+  total_pending: number;
 }
 
 export interface DailyRevenuePoint {

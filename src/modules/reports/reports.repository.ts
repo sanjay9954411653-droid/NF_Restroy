@@ -4,6 +4,7 @@ import {
   DailyRevenuePoint,
   InventoryAlert,
   TopSellingItem,
+  PaymentModeRow,
 } from "./reports.types";
 
 export class ReportsRepository {
@@ -175,6 +176,44 @@ export class ReportsRepository {
 
       reorder_level: parseInt(row.reorder_level, 10) || 0,
     }));
+  }
+  /**
+   * Money received per payment mode between two local dates (inclusive).
+   * payments.created_at is stored as UTC without a zone, so it is converted to the
+   * given time zone before taking the date.
+   */
+  async getPaymentModes(
+    restaurantId: string,
+    from: string,
+    to: string,
+    tz: string,
+  ): Promise<PaymentModeRow[]> {
+    const result = await query(
+      `SELECT
+         method::text AS method,
+         COALESCE(SUM(amount) FILTER (WHERE status = 'PAID'), 0)     AS paid_amount,
+         COUNT(*)             FILTER (WHERE status = 'PAID')         AS paid_count,
+         COALESCE(SUM(amount) FILTER (WHERE status = 'REFUNDED'), 0) AS refunded_amount,
+         COALESCE(SUM(amount) FILTER (WHERE status = 'PENDING'), 0)  AS pending_amount
+       FROM payments
+       WHERE restaurant_id = $1
+         AND ((created_at AT TIME ZONE 'UTC') AT TIME ZONE $4)::date BETWEEN $2::date AND $3::date
+       GROUP BY method`,
+      [restaurantId, from, to, tz],
+    );
+
+    // Always return all four modes, even when one has no payments in the range
+    const byMethod = new Map(result.rows.map((r) => [r.method, r]));
+    return (['CASH', 'UPI', 'CARD', 'ONLINE'] as const).map((m) => {
+      const r = byMethod.get(m);
+      return {
+        method: m,
+        paid_amount: Number(r?.paid_amount) || 0,
+        paid_count: parseInt(r?.paid_count, 10) || 0,
+        refunded_amount: Number(r?.refunded_amount) || 0,
+        pending_amount: Number(r?.pending_amount) || 0,
+      };
+    });
   }
 }
 

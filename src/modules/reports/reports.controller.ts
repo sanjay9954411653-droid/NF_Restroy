@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { reportsService } from './reports.service';
-import { DailyRevenueQuerySchema, TopItemsQuerySchema } from './reports.types';
+import { DailyRevenueQuerySchema, PaymentModesQuerySchema, TopItemsQuerySchema } from './reports.types';
 import { successResponse } from '@/shared/utils/responseHandler';
 import { AuthenticatedRequest } from '@/shared/middleware/authenticate';
 
@@ -38,6 +38,19 @@ export class ReportsController {
       const query = DailyRevenueQuerySchema.parse(req.query);
       const revenue = await reportsService.getDailyRevenue(restaurantId, query.days);
       res.status(200).json(successResponse(revenue));
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async getPaymentModes(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const restaurantId = req.user?.restaurantId;
+      if (!restaurantId) throw new Error('User not associated with a restaurant');
+
+      const q = PaymentModesQuerySchema.parse(req.query);
+      const report = await reportsService.getPaymentModes(restaurantId, q.from, q.to, q.tz);
+      res.status(200).json(successResponse(report));
     } catch (error) {
       next(error);
     }
