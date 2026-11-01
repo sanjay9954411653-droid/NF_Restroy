@@ -179,15 +179,28 @@ export class ReportsRepository {
   }
   /**
    * Money received per payment mode between two local dates (inclusive).
-   * payments.created_at is stored as UTC without a zone, so it is converted to the
-   * given time zone before taking the date.
+   * payments.created_at is stored as UTC without a zone, so it is shifted to the
+   * viewer's local time before taking the date. Uses the zone name when Postgres
+   * knows it; otherwise falls back to the browser's fixed UTC offset, so an odd
+   * or legacy zone name (e.g. "Asia/Calcutta") can never break the report.
    */
   async getPaymentModes(
     restaurantId: string,
     from: string,
     to: string,
-    tz: string,
+    zoneCandidates: string[],
+    offsetMinutes: number,
   ): Promise<PaymentModeRow[]> {
+    const known = await query(
+      `SELECT name FROM pg_timezone_names WHERE name = ANY($1::text[]) LIMIT 1`,
+      [zoneCandidates],
+    );
+    const zone: string | undefined = known.rows[0]?.name;
+
+    const localDate = zone
+      ? `((created_at AT TIME ZONE 'UTC') AT TIME ZONE $4::text)::date`
+      : `(created_at + make_interval(mins => $4::int))::date`;
+
     const result = await query(
       `SELECT
          method::text AS method,
@@ -197,9 +210,9 @@ export class ReportsRepository {
          COALESCE(SUM(amount) FILTER (WHERE status = 'PENDING'), 0)  AS pending_amount
        FROM payments
        WHERE restaurant_id = $1
-         AND ((created_at AT TIME ZONE 'UTC') AT TIME ZONE $4)::date BETWEEN $2::date AND $3::date
+         AND ${localDate} BETWEEN $2::date AND $3::date
        GROUP BY method`,
-      [restaurantId, from, to, tz],
+      [restaurantId, from, to, zone ?? offsetMinutes],
     );
 
     // Always return all four modes, even when one has no payments in the range

@@ -49,7 +49,7 @@ export class ReportsController {
       if (!restaurantId) throw new Error('User not associated with a restaurant');
 
       const q = PaymentModesQuerySchema.parse(req.query);
-      const report = await reportsService.getPaymentModes(restaurantId, q.from, q.to, q.tz);
+      const report = await reportsService.getPaymentModes(restaurantId, q.from, q.to, q.tz, q.offset);
       res.status(200).json(successResponse(report));
     } catch (error) {
       next(error);

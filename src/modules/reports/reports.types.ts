@@ -16,6 +16,11 @@ export const PaymentModesQuerySchema = z
     to: isoDate,
     // Browser's IANA time zone (e.g. Asia/Kolkata) so "today" means the restaurant's today, not UTC's.
     tz: z.string().max(64).optional(),
+    // Browser's UTC offset in minutes (east positive, e.g. 330 for India). Used if the DB doesn't know the zone name.
+    offset: z.preprocess(
+      (v) => (v === undefined || v === '' ? undefined : Number(v)),
+      z.number().int().min(-840).max(840).optional(),
+    ),
   })
   .refine((q) => q.from <= q.to, { message: '"from" must not be after "to"' });
 
