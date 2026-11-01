@@ -9,6 +9,7 @@ import Card from '../components/Card'
 import Badge from '../components/Badge'
 import EmptyState from '../components/EmptyState'
 import Loading from '../components/Loading'
+import Modal from '../components/Modal'
 import Pagination from '../components/Pagination'
 import { Payment } from '../types/payment'
 import { formatCurrency, formatDate } from '../lib/utils'
@@ -17,6 +18,7 @@ import {
   MagnifyingGlassIcon,
   CurrencyDollarIcon,
   TrashIcon,
+  PencilSquareIcon,
   CheckCircleIcon,
   ArrowTopRightOnSquareIcon,
 } from '@heroicons/react/24/outline'
@@ -31,6 +33,9 @@ const METHOD_ICON: Record<string, string> = {
   CASH: '💵', CARD: '💳', UPI: '📱', ONLINE: '🌐',
 }
 
+const METHODS = ['CASH', 'CARD', 'UPI', 'ONLINE'] as const
+const METHOD_LABEL: Record<string, string> = { CASH: 'Cash', CARD: 'Card', UPI: 'UPI', ONLINE: 'Online' }
+
 const ITEMS_PER_PAGE = 20
 
 const Payments: React.FC = () => {
@@ -42,6 +47,10 @@ const Payments: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<string>('ALL')
   const [currentPage, setCurrentPage] = useState(1)
   const [markingId, setMarkingId] = useState<string | null>(null)
+  const [editing, setEditing] = useState<Payment | null>(null)
+  const [editMethod, setEditMethod] = useState<string>('CASH')
+  const [editRef, setEditRef] = useState('')
+  const [savingEdit, setSavingEdit] = useState(false)
 
   const fetchPayments = async () => {
     try {
@@ -98,6 +107,35 @@ const Payments: React.FC = () => {
       toast.error(getErrorMessage(err))
     } finally {
       setMarkingId(null)
+    }
+  }
+
+  const openEdit = (payment: Payment) => {
+    setEditing(payment)
+    setEditMethod(payment.method)
+    setEditRef(payment.reference_number || '')
+  }
+
+  const handleSaveEdit = async () => {
+    if (!editing || savingEdit) return
+    const newRef = editRef.trim()
+    const unchanged = editMethod === editing.method && newRef === (editing.reference_number || '')
+    if (unchanged) { setEditing(null); return }
+    setSavingEdit(true)
+    try {
+      await api.patch(`/payments/${editing.id}`, { method: editMethod, reference_number: newRef })
+      // The update response has no order/table details, so merge only what changed
+      setPayments((list) =>
+        list.map((x) =>
+          x.id === editing.id ? { ...x, method: editMethod as any, reference_number: newRef || null } : x,
+        ),
+      )
+      toast.success(`Payment mode changed to ${METHOD_LABEL[editMethod] || editMethod}`)
+      setEditing(null)
+    } catch (err) {
+      toast.error(getErrorMessage(err))
+    } finally {
+      setSavingEdit(false)
     }
   }
 
@@ -257,6 +295,13 @@ const Payments: React.FC = () => {
                             </button>
                           )}
                           <button
+                            onClick={() => openEdit(payment)}
+                            title="Edit payment mode"
+                            className="p-1.5 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded-lg transition-colors"
+                          >
+                            <PencilSquareIcon className="w-4 h-4" />
+                          </button>
+                          <button
                             onClick={() => handleDelete(payment.id)}
                             className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
                           >
@@ -277,6 +322,66 @@ const Payments: React.FC = () => {
           )}
         </Card>
       )}
+
+      <Modal
+        isOpen={!!editing}
+        onClose={() => setEditing(null)}
+        title="Edit payment mode"
+        size="sm"
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={() => setEditing(null)} disabled={savingEdit}>Cancel</Button>
+            <Button variant="primary" onClick={handleSaveEdit} disabled={savingEdit}>
+              {savingEdit ? 'Saving…' : 'Save'}
+            </Button>
+          </div>
+        }
+      >
+        {editing && (
+          <div className="space-y-4">
+            <p className="text-sm text-slate-500">
+              {editing.order_number ? `Order ${editing.order_number}` : 'Payment'} ·{' '}
+              <span className="font-semibold text-slate-800">{formatCurrency(Number(editing.amount))}</span>
+            </p>
+
+            <div>
+              <p className="text-sm font-medium text-slate-700 mb-2">How was it actually paid?</p>
+              <div className="grid grid-cols-2 gap-2">
+                {METHODS.map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => setEditMethod(m)}
+                    className={`flex items-center justify-center gap-2 rounded-xl border px-3 py-3 text-sm font-medium transition-colors ${
+                      editMethod === m
+                        ? 'border-brand-600 bg-brand-50 text-brand-700'
+                        : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    <span>{METHOD_ICON[m]}</span>
+                    {METHOD_LABEL[m]}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <Input
+              label="Reference number (optional)"
+              placeholder="UPI / card transaction ID"
+              value={editRef}
+              onChange={(e) => setEditRef(e.target.value)}
+              fullWidth
+            />
+
+            {editing.method === 'ONLINE' && (
+              <p className="rounded-lg bg-amber-50 border border-amber-200 p-2.5 text-xs text-amber-800">
+                This was paid through the online gateway. Changing it only changes how it appears in your
+                records — it does not move any money.
+              </p>
+            )}
+          </div>
+        )}
+      </Modal>
 
       {formOpen && (
         <PaymentForm
