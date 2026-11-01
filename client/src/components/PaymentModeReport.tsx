@@ -74,7 +74,8 @@ const PaymentModeReport: React.FC = () => {
     setLoading(true)
     try {
       const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
-      const res = await api.get('/reports/payment-modes', { params: { from, to, tz } })
+      const offset = -new Date().getTimezoneOffset() // minutes east of UTC (330 for India)
+      const res = await api.get('/reports/payment-modes', { params: { from, to, tz, offset } })
       if (ticket === latest.current) setReport(res.data.data)
     } catch (err) {
       if (ticket === latest.current) toast.error(getErrorMessage(err))
