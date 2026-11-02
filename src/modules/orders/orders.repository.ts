@@ -1,5 +1,6 @@
 import { pool, query } from '@/config/database';
 import { Order, OrderItem, OrderStats, EnrichedOrder, UpdatedOrderItem } from './orders.types';
+import { isToday } from '@/shared/businessTime';
 
 export class OrdersRepository {
   async createOrderWithItems(
@@ -613,14 +614,14 @@ export class OrdersRepository {
   async getStats(restaurantId: string): Promise<OrderStats> {
     const result = await query(
       `SELECT
-        COUNT(*) FILTER (WHERE DATE(o.created_at) = CURRENT_DATE) as total_orders_today,
-        COUNT(*) FILTER (WHERE o.status = 'COMPLETED' AND DATE(o.created_at) = CURRENT_DATE) as completed_orders_today,
-        COUNT(*) FILTER (WHERE o.status = 'CANCELLED' AND DATE(o.created_at) = CURRENT_DATE) as cancelled_orders_today,
+        COUNT(*) FILTER (WHERE ${isToday('o.created_at')}) as total_orders_today,
+        COUNT(*) FILTER (WHERE o.status = 'COMPLETED' AND ${isToday('o.created_at')}) as completed_orders_today,
+        COUNT(*) FILTER (WHERE o.status = 'CANCELLED' AND ${isToday('o.created_at')}) as cancelled_orders_today,
         COUNT(*) FILTER (
           WHERE o.status NOT IN ('COMPLETED', 'CANCELLED')
           AND NOW() > o.created_at + (r.delay_threshold_minutes || ' minutes')::interval
         ) as delayed_orders_count,
-        COALESCE(SUM(o.total_amount) FILTER (WHERE DATE(o.created_at) = CURRENT_DATE), 0) as revenue_today
+        COALESCE(SUM(o.total_amount) FILTER (WHERE ${isToday('o.created_at')}), 0) as revenue_today
        FROM orders o
        JOIN restaurants r ON o.restaurant_id = r.id
        WHERE o.restaurant_id = $1`,
