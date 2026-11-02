@@ -25,6 +25,7 @@ import { PrinterIcon, CurrencyDollarIcon, XMarkIcon } from '@heroicons/react/24/
 import { calcBill } from '../lib/billing'
 import { couponApi } from '../lib/growthApi'
 import { printHtml } from '../lib/printHtml'
+import { buildBillDocument } from '../lib/billPrint'
 
 interface RestaurantInfo {
   name: string
@@ -155,31 +156,8 @@ const BillScreen: React.FC<BillScreenProps> = ({ orderId, tableNumber, onClose, 
   }, [orderId])
 
   const handlePrint = () => {
-    if (!printRef.current) return
-    const content = printRef.current.innerHTML
-
-    // Reuse the app's real stylesheet so the Tailwind classes in the preview render.
-    const styleTags = Array.from(document.querySelectorAll('link[rel="stylesheet"], style'))
-      .map((el) => {
-        if (el.tagName === 'LINK') {
-          const href = new URL((el as HTMLLinkElement).href, window.location.origin).href
-          return `<link rel="stylesheet" href="${href}">`
-        }
-        return el.outerHTML
-      })
-      .join('\n')
-
-    printHtml(`<!DOCTYPE html>
-      <html><head><meta charset="utf-8"><title>Bill</title>
-      ${styleTags}
-      <style>
-        body { font-family: 'Courier New', monospace; font-size: 12px; width: 80mm; margin: 0 auto; padding: 8px; background:#fff; }
-        img { max-width: 100%; }
-        a { color: inherit; text-decoration: none; }
-        @page { size: 80mm auto; margin: 3mm; }
-        @media print { body { width: 80mm; padding: 0; } }
-      </style>
-      </head><body>${content}</body></html>`)
+    if (!order || !restaurant) return
+    printHtml(buildBillDocument({ order, items, restaurant, tableNumber, coupon }))
   }
 
   if (loading) return (
