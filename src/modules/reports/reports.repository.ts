@@ -6,6 +6,7 @@ import {
   TopSellingItem,
   PaymentModeRow,
 } from "./reports.types";
+import { isToday, todayLocal, localDay } from '@/shared/businessTime';
 
 export class ReportsRepository {
   async getDashboardReport(restaurantId: string): Promise<DashboardReport> {
@@ -14,48 +15,48 @@ export class ReportsRepository {
          (SELECT COUNT(*)
           FROM orders
           WHERE restaurant_id = $1
-          AND DATE(created_at) = CURRENT_DATE) AS total_orders_today,
+          AND ${isToday('created_at')}) AS total_orders_today,
 
          (SELECT COUNT(*)
           FROM orders
           WHERE restaurant_id = $1
           AND status = 'COMPLETED'
-          AND DATE(created_at) = CURRENT_DATE) AS completed_orders_today,
+          AND ${isToday('created_at')}) AS completed_orders_today,
 
          (SELECT COUNT(*)
           FROM orders
           WHERE restaurant_id = $1
           AND status = 'CANCELLED'
-          AND DATE(created_at) = CURRENT_DATE) AS cancelled_orders_today,
+          AND ${isToday('created_at')}) AS cancelled_orders_today,
 
          (SELECT COUNT(*)
           FROM orders
           WHERE restaurant_id = $1
           AND status NOT IN ('COMPLETED', 'CANCELLED')
-          AND DATE(created_at) = CURRENT_DATE) AS active_orders,
+          AND ${isToday('created_at')}) AS active_orders,
 
          (SELECT COALESCE(SUM(total_amount), 0)
           FROM orders
           WHERE restaurant_id = $1
           AND status = 'COMPLETED'
-          AND DATE(created_at) = CURRENT_DATE) AS revenue_today,
+          AND ${isToday('created_at')}) AS revenue_today,
 
          (SELECT COUNT(*)
           FROM payments
           WHERE restaurant_id = $1
-          AND DATE(created_at) = CURRENT_DATE) AS payments_today,
+          AND ${isToday('created_at')}) AS payments_today,
 
          (SELECT COALESCE(SUM(amount), 0)
           FROM payments
           WHERE restaurant_id = $1
           AND status = 'PAID'
-          AND DATE(created_at) = CURRENT_DATE) AS paid_amount_today,
+          AND ${isToday('created_at')}) AS paid_amount_today,
 
          (SELECT COALESCE(SUM(amount), 0)
           FROM payments
           WHERE restaurant_id = $1
           AND status = 'REFUNDED'
-          AND DATE(created_at) = CURRENT_DATE) AS refunded_amount_today,
+          AND ${isToday('created_at')}) AS refunded_amount_today,
 
          (SELECT COUNT(*)
           FROM inventory_items
@@ -129,15 +130,15 @@ export class ReportsRepository {
                FROM payments p
                WHERE p.restaurant_id = $1
                  AND p.status = 'REFUNDED'
-                 AND DATE(p.created_at) = date_series
+                 AND ${localDay('p.created_at')} = date_series
              ), 0) AS revenue
        FROM generate_series(
-         CURRENT_DATE - ($2 - 1) * INTERVAL '1 day',
-         CURRENT_DATE,
+         ${todayLocal} - ($2 - 1) * INTERVAL '1 day',
+         ${todayLocal},
          '1 day'
        ) AS date_series
        LEFT JOIN orders o
-         ON DATE(o.created_at) = date_series
+         ON ${localDay('o.created_at')} = date_series
          AND o.restaurant_id = $1
          AND o.status = 'COMPLETED'
        GROUP BY date_series
