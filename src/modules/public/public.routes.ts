@@ -388,6 +388,9 @@ router.post('/order/:slug', publicOrderRateLimiter, async (req: Request, res: Re
       if (!menuItem || menuItem.restaurant_id !== restaurantId || !menuItem.is_active) {
         throw new BadRequestError('Menu item not available');
       }
+      if ((menuItem as any).price_unit && (menuItem as any).price_unit !== 'PIECE') {
+        throw new BadRequestError(`"${menuItem.name}" is sold by weight — please ask the staff to add it for you`);
+      }
 
       // Calculate modifier price adjustments
       let modifierAdjustment = 0;
