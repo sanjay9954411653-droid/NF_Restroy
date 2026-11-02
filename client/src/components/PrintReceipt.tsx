@@ -19,6 +19,7 @@
 import React from 'react'
 import { Order, OrderItem } from '../types/order'
 import { formatDate } from '../lib/utils'
+import { formatWeight, ratePerKg } from '../lib/weight'
 
 function esc(s: string | undefined | null): string {
   if (!s) return ''
@@ -71,8 +72,8 @@ export function printReceipt(
           ${esc(item.menu_item_name || item.menu_item_id)}
           ${fmtMods(item.modifiers)}
         </td>
-        <td style="text-align:center;padding:3px 4px;">${item.quantity}</td>
-        <td style="text-align:right;padding:3px 0;">${formatRupees(Number(item.unit_price || 0))}</td>
+        <td style="text-align:center;padding:3px 4px;">${item.weight_grams ? esc(formatWeight(item.weight_grams)) : item.quantity}</td>
+        <td style="text-align:right;padding:3px 0;">${item.weight_grams ? `${formatRupees(ratePerKg(Number(item.unit_price || 0), item.weight_grams))}/kg` : formatRupees(Number(item.unit_price || 0))}</td>
         <td style="text-align:right;padding:3px 0;">${formatRupees(Number(item.unit_price || 0) * item.quantity)}</td>
       </tr>`,
     )
@@ -241,7 +242,7 @@ const PrintReceipt: React.FC<PrintReceiptProps> = ({
                       </div>
                     )}
                   </td>
-                  <td className="text-center py-0.5">{item.quantity}</td>
+                  <td className="text-center py-0.5">{item.weight_grams ? formatWeight(item.weight_grams) : item.quantity}</td>
                   <td className="text-right py-0.5">{fmt(Number(item.unit_price || 0) * item.quantity)}</td>
                 </tr>
               ))}

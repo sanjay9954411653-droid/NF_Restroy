@@ -19,6 +19,7 @@
 import React from 'react'
 import { Order, OrderItem } from '../types/order'
 import { formatDate } from '../lib/utils'
+import { formatWeight } from '../lib/weight'
 
 function esc(s: string | undefined | null): string {
   if (!s) return ''
@@ -54,7 +55,7 @@ export function printKOT(order: Order, items: OrderItem[], restaurantName = 'Kit
     .map(
       (item) => `
       <tr>
-        <td style="font-size:16px;font-weight:bold;padding:2px 0;">${item.quantity}x</td>
+        <td style="font-size:16px;font-weight:bold;padding:2px 0;">${item.weight_grams ? esc(formatWeight(item.weight_grams)) : `${item.quantity}x`}</td>
         <td style="padding:2px 4px;font-size:14px;font-weight:bold;">
           ${esc(item.menu_item_name || item.menu_item_id)}
           ${fmtMods(item.modifiers)}
@@ -180,7 +181,7 @@ const PrintKOT: React.FC<PrintKOTProps> = ({ order, items, restaurantName = 'Kit
             {items.map((item, i) => (
               <div key={i}>
                 <div className="flex gap-2">
-                  <span className="font-bold w-6 shrink-0">{item.quantity}x</span>
+                  <span className="font-bold min-w-[1.5rem] shrink-0">{item.weight_grams ? formatWeight(item.weight_grams) : `${item.quantity}x`}</span>
                   <span className="font-bold">{item.menu_item_name || item.menu_item_id}</span>
                 </div>
                 {fmtMods(item.modifiers) && (

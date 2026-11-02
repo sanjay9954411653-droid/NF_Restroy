@@ -18,6 +18,7 @@ import toast from 'react-hot-toast'
 import api, { getErrorMessage } from '../api'
 import { Order, OrderStatus, OrderItem } from '../types/order'
 import { formatCurrency, formatRelative } from '../lib/utils'
+import { formatWeight } from '../lib/weight'
 import Button from './Button'
 import Badge from './Badge'
 import { printKOT } from './PrintKOT'
@@ -168,7 +169,7 @@ const TableOrderPanel: React.FC<TableOrderPanelProps> = ({
                   items.map((it, i) => (
                     <div key={it.id || i} className="flex items-start justify-between gap-3 py-2">
                       <div className="flex gap-2 min-w-0">
-                        <span className="text-sm font-bold text-gray-700 shrink-0">{it.quantity}×</span>
+                        <span className="text-sm font-bold text-gray-700 shrink-0">{it.weight_grams ? formatWeight(it.weight_grams) : `${it.quantity}×`}</span>
                         <div className="min-w-0">
                           <p className="text-sm text-gray-900 leading-tight">
                             {it.menu_item_name || it.menu_item_id}

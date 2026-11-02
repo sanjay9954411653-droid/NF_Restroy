@@ -17,6 +17,7 @@ import api, { getErrorMessage } from '../api'
 import toast from 'react-hot-toast'
 import { Order, OrderItem } from '../types/order'
 import { formatDate } from '../lib/utils'
+import { formatWeight, ratePerKg } from '../lib/weight'
 import Button from './Button'
 import Loading from './Loading'
 import PaymentForm from './PaymentForm'
@@ -321,7 +322,9 @@ const BillScreen: React.FC<BillScreenProps> = ({ orderId, tableNumber, onClose, 
                     </div>
                   )}
                   <div className="text-xs text-gray-400">
-                    {item.quantity} × {fmt(Number(item.unit_price || 0))}
+                    {item.weight_grams
+                      ? `${formatWeight(item.weight_grams)} × ${fmt(ratePerKg(Number(item.unit_price || 0), item.weight_grams))} / kg`
+                      : `${item.quantity} × ${fmt(Number(item.unit_price || 0))}`}
                   </div>
                 </div>
               )

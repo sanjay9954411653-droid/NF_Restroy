@@ -22,6 +22,7 @@ const MenuForm: React.FC<MenuFormProps> = ({ menuItem, onClose, onSave }) => {
   const [name, setName] = useState(menuItem?.name || '');
   const [description, setDescription] = useState(menuItem?.description || '');
   const [price, setPrice] = useState(Number(menuItem?.price) || 0);
+  const [priceUnit, setPriceUnit] = useState<'PIECE' | 'KG' | '100G'>(menuItem?.price_unit || 'PIECE');
   const [categoryId, setCategoryId] = useState(menuItem?.category_id || '');
   const [prepTime, setPrepTime] = useState(menuItem?.prep_time_minutes || 15);
   const [isVegetarian, setIsVegetarian] = useState(menuItem?.is_vegetarian ?? false);
@@ -45,6 +46,7 @@ const MenuForm: React.FC<MenuFormProps> = ({ menuItem, onClose, onSave }) => {
       setName(menuItem.name);
       setDescription(menuItem.description || '');
       setPrice(Number(menuItem.price));
+      setPriceUnit(menuItem.price_unit || 'PIECE');
       setCategoryId(menuItem.category_id);
       setPrepTime(menuItem.prep_time_minutes);
       setIsVegetarian(menuItem.is_vegetarian);
@@ -56,6 +58,7 @@ const MenuForm: React.FC<MenuFormProps> = ({ menuItem, onClose, onSave }) => {
       setName('');
       setDescription('');
       setPrice(0);
+      setPriceUnit('PIECE');
       setCategoryId('');
       setPrepTime(15);
       setIsVegetarian(false);
@@ -150,6 +153,7 @@ const MenuForm: React.FC<MenuFormProps> = ({ menuItem, onClose, onSave }) => {
       name,
       description,
       price: Number(price),
+      price_unit: priceUnit,
       prep_time_minutes: Number(prepTime),
       is_vegetarian: isVegetarian,
       is_active: isActive,
@@ -263,7 +267,9 @@ const MenuForm: React.FC<MenuFormProps> = ({ menuItem, onClose, onSave }) => {
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700">Price</label>
+              <label className="block text-sm font-medium text-gray-700">
+                Price{priceUnit === 'KG' ? ' (₹ per kg)' : priceUnit === '100G' ? ' (₹ per 100 g)' : ''}
+              </label>
               <input
                 type="number"
                 value={price}
@@ -273,6 +279,23 @@ const MenuForm: React.FC<MenuFormProps> = ({ menuItem, onClose, onSave }) => {
                 className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
               />
               {errors.price && <p className="text-red-500 text-sm mt-1">{errors.price}</p>}
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Sold by</label>
+              <select
+                value={priceUnit}
+                onChange={(e) => setPriceUnit(e.target.value as 'PIECE' | 'KG' | '100G')}
+                className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 bg-white"
+              >
+                <option value="PIECE">Per piece / plate</option>
+                <option value="KG">By weight — price per kg</option>
+                <option value="100G">By weight — price per 100 g</option>
+              </select>
+              {priceUnit !== 'PIECE' && (
+                <p className="text-xs text-gray-500 mt-1">
+                  When ordering, staff enter the weight (g or kg) and the amount is worked out automatically.
+                </p>
+              )}
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700">Prep Time (minutes)</label>
