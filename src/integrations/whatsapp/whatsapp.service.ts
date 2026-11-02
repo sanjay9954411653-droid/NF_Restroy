@@ -99,7 +99,8 @@ export class WhatsAppService {
     const t = text.toLowerCase().trim();
     if (!t || t.length < 2) return null;
 
-    const candidates = menuItems.filter((m) => m.is_active && !excludeIds.has(m.id));
+    // Dishes sold by weight can't be ordered by text (no weight, so no price): leave them out.
+    const candidates = menuItems.filter((m) => m.is_active && !excludeIds.has(m.id) && (m.price_unit ?? 'PIECE') === 'PIECE');
 
     // 1. Exact match
     const exact = candidates.find((m) => m.name.toLowerCase() === t);
@@ -153,7 +154,7 @@ export class WhatsAppService {
    * Groups items by category for readability.
    */
   private buildMenuSummary(menuItems: MenuItem[]): string {
-    const active = menuItems.filter((m) => m.is_active).slice(0, 15);
+    const active = menuItems.filter((m) => m.is_active && (m.price_unit ?? 'PIECE') === 'PIECE').slice(0, 15);
     if (active.length === 0) return 'No items available.';
     return active.map((m) => `• ${m.name} — ₹${m.price}`).join('\n');
   }
