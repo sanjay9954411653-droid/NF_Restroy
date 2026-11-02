@@ -94,7 +94,7 @@ export class MenuService {
   }
 
   async createMenuItem(restaurantId: string, payload: CreateMenuItemRequest): Promise<MenuItem> {
-    const { category_id, name, description, price, prep_time_minutes, is_vegetarian, is_active, display_order, image_url, is_featured } = payload;
+    const { category_id, name, description, price, prep_time_minutes, is_vegetarian, is_active, display_order, image_url, is_featured, price_unit } = payload;
     const validatedName = this.validateMenuItemName(name);
 
     const category = await this.getCategory(category_id);
@@ -117,7 +117,8 @@ export class MenuService {
       is_active,
       display_order,
       image_url || null,
-      is_featured ?? false
+      is_featured ?? false,
+      price_unit ?? 'PIECE'
     );
   }
 
@@ -177,6 +178,9 @@ export class MenuService {
     }
     if (payload.is_featured !== undefined) {
       updates.is_featured = payload.is_featured;
+    }
+    if (payload.price_unit !== undefined) {
+      updates.price_unit = payload.price_unit;
     }
 
     const updated = await menuRepository.updateMenuItem(menuItemId, updates);

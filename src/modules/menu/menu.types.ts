@@ -32,6 +32,7 @@ export const CreateMenuItemRequestSchema = z.object({
   is_vegetarian: z.boolean().default(false),
   is_active: z.boolean().default(true),
   display_order: z.number().int().min(0).default(0),
+  price_unit: z.enum(['PIECE', 'KG', '100G']).default('PIECE'), // KG / 100G: price is per kg / per 100 g
   image_url: imageUrlSchema,
   is_featured: z.boolean().default(false),
 });
@@ -45,6 +46,7 @@ export const UpdateMenuItemRequestSchema = z.object({
   is_vegetarian: z.boolean().optional(),
   is_active: z.boolean().optional(),
   display_order: z.number().int().min(0).optional(),
+  price_unit: z.enum(['PIECE', 'KG', '100G']).optional(),
   image_url: imageUrlSchema,
   is_featured: z.boolean().optional(),
 });
@@ -74,6 +76,7 @@ export interface MenuItem {
   price: number;
   prep_time_minutes: number;
   is_vegetarian: boolean;
+  price_unit: 'PIECE' | 'KG' | '100G'; // KG / 100G: `price` is per kg / per 100 g
   image_url?: string | null;
   is_featured: boolean;
   is_active: boolean;
