@@ -7,6 +7,7 @@ import {
   InvoiceStatus,
   PlatformMetrics,
 } from './subscriptions.types';
+import { isToday } from '@/shared/businessTime';
 
 const PLAN_COLS =
   'id, name, price::float8 AS price, billing_cycle, description, is_active, gateway_plan_id, created_at, updated_at';
@@ -280,8 +281,8 @@ export class SubscriptionsRepository {
         p.name AS plan_name,
         p.price AS plan_price,
         (SELECT COUNT(*) FROM users u WHERE u.restaurant_id = r.id) AS user_count,
-        (SELECT COUNT(*) FROM orders o WHERE o.restaurant_id = r.id AND DATE(o.created_at) = CURRENT_DATE) AS orders_today,
-        (SELECT COALESCE(SUM(o.total_amount), 0) FROM orders o WHERE o.restaurant_id = r.id AND o.status = 'COMPLETED' AND DATE(o.created_at) = CURRENT_DATE) AS revenue_today,
+        (SELECT COUNT(*) FROM orders o WHERE o.restaurant_id = r.id AND ${isToday('o.created_at')}) AS orders_today,
+        (SELECT COALESCE(SUM(o.total_amount), 0) FROM orders o WHERE o.restaurant_id = r.id AND o.status = 'COMPLETED' AND ${isToday('o.created_at')}) AS revenue_today,
         (SELECT MAX(o.created_at) FROM orders o WHERE o.restaurant_id = r.id) AS last_order_at
       FROM restaurants r
       LEFT JOIN subscriptions s ON s.restaurant_id = r.id

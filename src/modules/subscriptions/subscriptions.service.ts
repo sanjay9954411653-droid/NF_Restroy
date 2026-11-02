@@ -10,6 +10,7 @@ import {
 } from './subscriptions.types';
 import { BadRequestError, NotFoundError } from '@/shared/errors/AppError';
 import { authRepository } from '@/modules/auth/auth.repository';
+import { isToday } from '@/shared/businessTime';
 
 // How long a trial lasts, and how long the grace period runs after expiry.
 const TRIAL_DAYS = 14;
@@ -402,8 +403,8 @@ export class SubscriptionsService {
          p.name AS plan_name,
          p.price AS plan_price,
          (SELECT COUNT(*) FROM users u WHERE u.restaurant_id = r.id) AS user_count,
-         (SELECT COUNT(*) FROM orders o WHERE o.restaurant_id = r.id AND DATE(o.created_at) = CURRENT_DATE) AS orders_today,
-         (SELECT COALESCE(SUM(o.total_amount), 0) FROM orders o WHERE o.restaurant_id = r.id AND o.status = 'COMPLETED' AND DATE(o.created_at) = CURRENT_DATE) AS revenue_today
+         (SELECT COUNT(*) FROM orders o WHERE o.restaurant_id = r.id AND ${isToday('o.created_at')}) AS orders_today,
+         (SELECT COALESCE(SUM(o.total_amount), 0) FROM orders o WHERE o.restaurant_id = r.id AND o.status = 'COMPLETED' AND ${isToday('o.created_at')}) AS revenue_today
        FROM restaurants r
        LEFT JOIN subscriptions s ON s.restaurant_id = r.id
        LEFT JOIN subscription_plans p ON p.id = s.plan_id
