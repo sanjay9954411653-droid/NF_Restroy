@@ -17,6 +17,7 @@ import { useCartStore } from '../store/useCartStore'
 import { tablesApi } from '../api/endpoints'
 import { getErrorMessage } from '../api/client'
 import type { TableWithStatus } from '../types'
+import { usePayable } from '../lib/usePayable'
 
 type Occupancy = 'free' | 'occupied' | 'ready'
 
@@ -33,6 +34,7 @@ function occupancyOf(t: TableWithStatus): Occupancy {
 
 const TablesPage: React.FC = () => {
   const navigate = useNavigate()
+  const payable = usePayable()
   const { setTable, setOrderType, clear } = useCartStore()
   const [tables, setTables] = useState<TableWithStatus[]>([])
   const [loading, setLoading] = useState(true)
@@ -142,7 +144,7 @@ const TablesPage: React.FC = () => {
                   </span>
                   {table.active_order ? (
                     <p className="text-xs font-semibold text-gray-700 mt-1">
-                      ₹{table.active_order.total_amount.toFixed(0)}
+                      ₹{payable(table.active_order.total_amount).toFixed(2)}
                     </p>
                   ) : (
                     <p className="text-[10px] text-gray-400 mt-1">{table.seats} seats</p>

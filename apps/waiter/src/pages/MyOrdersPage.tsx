@@ -17,6 +17,7 @@ import { ordersApi, paymentsApi, PaymentMethod } from '../api/endpoints'
 import { formatDistanceToNow } from 'date-fns'
 import type { Order, OrderStatus } from '../types'
 import { getReadyRounds, isFullyServed, orderItemsOf } from '../lib/orderRounds'
+import { usePayable } from '../lib/usePayable'
 
 const formatCurrency = (n: number) =>
   new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 }).format(n)
@@ -409,6 +410,7 @@ const PaymentSheet: React.FC<PaymentSheetProps> = ({ order, onClose, onPaid }) =
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 const MyOrdersPage: React.FC = () => {
+  const payable = usePayable()
   const navigate = useNavigate()
   const { orders, queue, isLoading, fetchOrders, serve } = useOrderStore()
   const [payingOrder, setPayingOrder] = useState<Order | null>(null)
@@ -558,7 +560,7 @@ const MyOrdersPage: React.FC = () => {
                     </div>
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-gray-500">{itemCount} item{itemCount !== 1 ? 's' : ''}</span>
-                      <span className="font-bold text-gray-900 text-lg">{formatCurrency(Number(order.total_amount))}</span>
+                      <span className="font-bold text-gray-900 text-lg">{formatCurrency(payable(Number(order.total_amount)))}</span>
                     </div>
                     <div className="flex gap-2">
                       <button
@@ -612,7 +614,7 @@ const MyOrdersPage: React.FC = () => {
                         {items.length} item{items.length !== 1 ? 's' : ''}
                         {doneCount > 0 && ` · ${doneCount} ready`}
                       </span>
-                      <span className="font-bold text-gray-900">{formatCurrency(Number(order.total_amount))}</span>
+                      <span className="font-bold text-gray-900">{formatCurrency(payable(Number(order.total_amount)))}</span>
                     </div>
                     <button
                       onClick={() => navigate(`/order/add/${order.id}?table=${order.table?.table_number || ''}`)}
