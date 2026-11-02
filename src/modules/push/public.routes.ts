@@ -22,6 +22,7 @@ import { env } from '@/config/env';
 import { createRazorpayOrder } from '@/modules/payments/gateways/razorpay.gateway';
 import { modifierRepository } from '@/modules/modifiers/modifier.repository'; import { pushService } from '@/modules/push/push.service';
 import { z } from 'zod';
+import { isToday } from '@/shared/businessTime';
 
 const router = Router();
 
@@ -825,7 +826,7 @@ router.get('/tokens/:restaurantId', async (req: Request, res: Response, next: Ne
        WHERE restaurant_id = $1
          AND token_number IS NOT NULL
          AND status IN ('ACCEPTED', 'PREPARING', 'READY')
-         AND DATE(created_at) = CURRENT_DATE
+         AND ${isToday('created_at')}
        ORDER BY
          CASE status WHEN 'READY' THEN 0 WHEN 'PREPARING' THEN 1 ELSE 2 END,
          token_number ASC
