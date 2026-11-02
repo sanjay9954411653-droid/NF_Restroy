@@ -16,6 +16,8 @@ export interface MenuItem {
   name: string
   description?: string
   price: number
+  /** What the price means: per piece (default), per kg, or per 100 g */
+  price_unit?: 'PIECE' | 'KG' | '100G'
   prep_time_minutes: number
   is_vegetarian: boolean
   image_url?: string | null

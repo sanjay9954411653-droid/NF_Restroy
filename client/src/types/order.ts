@@ -27,6 +27,9 @@ export interface OrderItem {
 
   quantity: number;
 
+  /** Items sold by weight: the ordered weight in grams (quantity is 1, unit_price is the amount for that weight) */
+  weight_grams?: number | null;
+
   unit_price?: number;
 
   special_instructions?: string;
