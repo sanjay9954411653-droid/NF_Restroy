@@ -14,6 +14,7 @@ import EmptyState from '../components/EmptyState'
 import Loading from '../components/Loading'
 import { Order, OrderStatus, OrderType } from '../types/order'
 import { formatCurrency, formatRelative } from '../lib/utils'
+import { usePayable } from '../lib/useBillTotal'
 import {
   PlusIcon,
   MagnifyingGlassIcon,
@@ -57,6 +58,7 @@ const Orders: React.FC = () => {
   const { socket } = useSocket()
 
   const [orders, setOrders] = useState<Order[]>([])
+  const payable = usePayable()
   const [loading, setLoading] = useState(true)
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [editingOrder, setEditingOrder] = useState<Order | undefined>()
@@ -283,7 +285,7 @@ const Orders: React.FC = () => {
                   <div className="flex items-center justify-between">
                     <span className="text-xs text-gray-400">{itemCount} item{itemCount !== 1 ? 's' : ''}</span>
                     <span className="text-lg font-bold text-gray-900">
-                      {formatCurrency(Number(order.total_amount || 0))}
+                      {formatCurrency(payable(Number(order.total_amount || 0)))}
                     </span>
                   </div>
                 </div>

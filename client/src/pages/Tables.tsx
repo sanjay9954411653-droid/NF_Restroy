@@ -27,7 +27,7 @@ import Card from '../components/Card'
 import EmptyState from '../components/EmptyState'
 import Loading from '../components/Loading'
 import { Table, TableWithStatus } from '../types/table'
-import { BillingSettings, calcBill, normalizeBilling } from '../lib/billing'
+import { usePayable } from '../lib/useBillTotal'
 import {
   PlusIcon,
   Cog6ToothIcon,
@@ -86,18 +86,8 @@ const Tables: React.FC = () => {
   const [billTableNumber, setBillTableNumber] = useState<string | undefined>()
   const [panelRefresh, setPanelRefresh] = useState(0)
 
-  // The floor must show what the customer actually pays (items + service/other
-  // charges + GST), same as the Bill screen — not the raw item total.
-  const [billing, setBilling] = useState<BillingSettings | null>(null)
-  useEffect(() => {
-    api.get('/restaurants/me')
-      .then((res) => setBilling(normalizeBilling(res.data.data)))
-      .catch(() => {})
-  }, [])
-  const payable = useCallback(
-    (amount: number) => (billing ? Math.round(calcBill(amount, billing).grandTotal * 100) / 100 : amount),
-    [billing],
-  )
+  // The floor shows what the customer actually pays (items + charges + GST), same as the Bill.
+  const payable = usePayable()
 
   const fetchTables = useCallback(async () => {
     try {
