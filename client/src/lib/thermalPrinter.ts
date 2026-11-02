@@ -24,6 +24,7 @@
  */
 
 import type { Order, OrderItem } from '../types/order'
+import { formatWeight } from './weight'
 
 // ── ESC/POS byte building ────────────────────────────────────────────────────
 const ESC = 0x1b
@@ -88,7 +89,7 @@ export function buildKOTBytes(order: KOTOrder | Order, items: OrderItem[], resta
 
   for (const item of items) {
     out.push(...bold(true))
-    out.push(...left(`${item.quantity}x  ${ascii(item.menu_item_name || item.menu_item_id)}`))
+    out.push(...left(`${item.weight_grams ? formatWeight(item.weight_grams) : `${item.quantity}x`}  ${ascii(item.menu_item_name || item.menu_item_id)}`))
     out.push(...bold(false))
     const mods = (item as any).modifiers as Array<{ modifier_option_name: string }> | undefined
     if (mods?.length) out.push(...left(`    ${ascii(mods.map((m) => m.modifier_option_name).join(', '))}`))
