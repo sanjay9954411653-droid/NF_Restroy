@@ -11,6 +11,7 @@ import Loading from '../components/Loading'
 import Modal from '../components/Modal'
 import { MenuCategory, MenuItem } from '../types/menu'
 import { formatCurrency } from '../lib/utils'
+import { priceUnitSuffix } from '../lib/weight'
 import { optimizeImageUrl } from '../lib/imageUpload'
 import {
   PlusIcon,
@@ -287,6 +288,9 @@ const Menu: React.FC = () => {
                     </div>
                     <span className="text-base font-bold text-indigo-600 shrink-0">
                       {formatCurrency(item.price)}
+                      {priceUnitSuffix(item.price_unit) && (
+                        <span className="text-xs font-medium text-gray-500"> {priceUnitSuffix(item.price_unit)}</span>
+                      )}
                     </span>
                   </div>
 

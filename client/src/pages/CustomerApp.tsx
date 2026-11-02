@@ -1012,6 +1012,11 @@ const CustomerApp: React.FC = () => {
   )
 
   const handleAdd = (item: MenuItem) => {
+    // Sold by kg / 100 g: the weight is entered by staff, so it can't go in a self-order cart
+    if (item.price_unit === 'KG' || item.price_unit === '100G') {
+      setNotice(`${item.name} is sold by weight — please ask the staff to add it`)
+      return
+    }
     // Always open the item detail sheet so customers can review the dish
     // before adding it. Items without modifiers simply show the details and
     // the quantity selector.
@@ -1103,7 +1108,7 @@ const CustomerApp: React.FC = () => {
             <p className="text-xs text-gray-400 mt-0.5 line-clamp-2">{item.description}</p>
           )}
           <div className="flex items-center gap-2 mt-1">
-            <span className="font-bold text-[color:var(--accent)]">{formatCurrency(item.price)}</span>
+            <span className="font-bold text-[color:var(--accent)]">{formatCurrency(item.price)}{item.price_unit === 'KG' ? ' / kg' : item.price_unit === '100G' ? ' / 100 g' : ''}</span>
             <span className="text-xs text-gray-400">⏱ {item.prep_time_minutes}m</span>
           </div>
         </div>
@@ -1341,7 +1346,7 @@ const CustomerApp: React.FC = () => {
                       {item.is_vegetarian && vegDot}
                       <h3 className="font-semibold text-gray-900 text-sm truncate">{item.name}</h3>
                     </div>
-                    <p className="font-bold text-[color:var(--accent)] mt-1">{formatCurrency(item.price)}</p>
+                    <p className="font-bold text-[color:var(--accent)] mt-1">{formatCurrency(item.price)}{item.price_unit === 'KG' ? ' / kg' : item.price_unit === '100G' ? ' / 100 g' : ''}</p>
                   </div>
                 </div>
               ))}

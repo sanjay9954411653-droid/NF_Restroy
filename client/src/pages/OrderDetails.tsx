@@ -4,6 +4,7 @@ import toast from 'react-hot-toast'
 import api, { getErrorMessage } from '../api'
 import { Order, OrderItem, OrderStatus } from '../types/order'
 import { formatCurrency, formatDate } from '../lib/utils'
+import { formatWeight, ratePerKg } from '../lib/weight'
 import Card from '../components/Card'
 import Badge from '../components/Badge'
 import Button from '../components/Button'
@@ -220,8 +221,8 @@ const OrderDetails: React.FC = () => {
                     key={item.id || i}
                     className="flex items-start gap-4 p-3 bg-gray-50 rounded-xl"
                   >
-                    <div className="w-8 h-8 rounded-lg bg-indigo-100 flex items-center justify-center shrink-0">
-                      <span className="text-indigo-700 font-bold text-sm">{item.quantity}</span>
+                    <div className={`h-8 rounded-lg bg-indigo-100 flex items-center justify-center shrink-0 ${item.weight_grams ? 'px-2 min-w-[2rem]' : 'w-8'}`}>
+                      <span className="text-indigo-700 font-bold text-sm whitespace-nowrap">{item.weight_grams ? formatWeight(item.weight_grams) : item.quantity}</span>
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="font-medium text-gray-900">
@@ -235,7 +236,9 @@ const OrderDetails: React.FC = () => {
                       <p className="font-semibold text-gray-900">
                         {formatCurrency(unitPrice * item.quantity)}
                       </p>
-                      <p className="text-xs text-gray-400">{formatCurrency(unitPrice)} each</p>
+                      <p className="text-xs text-gray-400">
+                        {item.weight_grams ? `${formatCurrency(ratePerKg(unitPrice, item.weight_grams))} / kg` : `${formatCurrency(unitPrice)} each`}
+                      </p>
                     </div>
                   </div>
                 )
