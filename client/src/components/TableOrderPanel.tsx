@@ -23,6 +23,7 @@ import Button from './Button'
 import Badge from './Badge'
 import { printKOT } from './PrintKOT'
 import { printReceipt } from './PrintReceipt'
+import { useGrandTotal } from '../lib/useBillTotal'
 import {
   XMarkIcon,
   PlusIcon,
@@ -79,6 +80,7 @@ const TableOrderPanel: React.FC<TableOrderPanelProps> = ({
   const [items, setItems] = useState<OrderItem[]>([])
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
+  const grandTotal = useGrandTotal(order, items)
 
   const loadOrder = async () => {
     try {
@@ -213,7 +215,7 @@ const TableOrderPanel: React.FC<TableOrderPanelProps> = ({
               <div className="px-5 py-4 flex items-center justify-between">
                 <span className="text-sm text-gray-500">Total</span>
                 <span className="text-2xl font-bold text-gray-900">
-                  {formatCurrency(Number(order.total_amount || 0))}
+                  {formatCurrency(grandTotal ?? Number(order.total_amount || 0))}
                 </span>
               </div>
             </div>
