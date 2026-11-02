@@ -13,6 +13,7 @@ import PaymentForm from '../components/PaymentForm'
 import AddItemsModal from '../components/AddItemsModal'
 import PrintKOT from '../components/PrintKOT'
 import PrintReceipt from '../components/PrintReceipt'
+import { useGrandTotal } from '../lib/useBillTotal'
 import { ArrowLeftIcon, CurrencyDollarIcon, PlusIcon, PrinterIcon } from '@heroicons/react/24/outline'
 
 const STATUS_BADGE: Record<OrderStatus, { variant: any; label: string }> = {
@@ -41,6 +42,7 @@ const OrderDetails: React.FC = () => {
   const [addItemsOpen, setAddItemsOpen] = useState(false)
   const [kotOpen, setKotOpen] = useState(false)
   const [receiptOpen, setReceiptOpen] = useState(false)
+  const grandTotal = useGrandTotal(order, ((order as any)?.items || (order as any)?.order_items || []) as OrderItem[])
 
   const fetchAll = async () => {
     if (!id) return
@@ -186,7 +188,7 @@ const OrderDetails: React.FC = () => {
               { label: 'Type', value: order.order_type },
               { label: 'Source', value: order.order_source },
               { label: 'Table', value: order.table?.table_number ? `Table ${order.table.table_number}` : '—' },
-              { label: 'Total', value: formatCurrency(Number(order.total_amount || 0)) },
+              { label: 'Total', value: formatCurrency(grandTotal ?? Number(order.total_amount || 0)) },
               { label: 'Priority', value: order.priority_score },
               { label: 'Updated', value: formatDate(order.updated_at) },
               ...(order.completed_at ? [{ label: 'Completed', value: formatDate(order.completed_at) }] : []),
@@ -248,7 +250,7 @@ const OrderDetails: React.FC = () => {
               <div className="flex justify-between items-center pt-3 border-t border-gray-200">
                 <span className="font-semibold text-gray-900">Total</span>
                 <span className="text-xl font-bold text-indigo-600">
-                  {formatCurrency(Number(order.total_amount || 0))}
+                  {formatCurrency(grandTotal ?? Number(order.total_amount || 0))}
                 </span>
               </div>
             </div>
