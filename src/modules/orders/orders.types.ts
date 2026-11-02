@@ -1,9 +1,13 @@
 import { z } from 'zod';
+import { MAX_WEIGHT_GRAMS } from '@/shared/weight';
 
 export const OrderItemRequestSchema = z.object({
   menu_item_id: z.string().uuid('Menu item ID must be a valid UUID'),
   quantity: z.number().int().min(1, 'Quantity must be at least 1'),
   special_instructions: z.string().max(500).optional(),
+  // Only for items sold by weight (price_unit KG / 100G): the ordered weight in grams.
+  // The server works out the price from it; any price sent by a client is ignored.
+  weight_grams: z.number().int().min(1).max(MAX_WEIGHT_GRAMS).optional(),
 });
 
 export const CreateOrderRequestSchema = z.object({

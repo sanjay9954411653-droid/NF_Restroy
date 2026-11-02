@@ -1,3 +1,4 @@
+import { priceOrderLine } from '@/shared/weight';
 import { generateOrderNumber } from '@/shared/utils/orderNumber';
 import { ordersRepository } from './orders.repository';
 import { tablesRepository } from '@/modules/tables/tables.repository';
@@ -97,11 +98,19 @@ export class OrdersService {
       throw new BadRequestError('Menu item does not belong to this restaurant');
     }
 
+    // By-weight items (price per kg / per 100 g) are priced here from the weight;
+    // normal items use the menu price. Never taken from the client.
+    const priced = priceOrderLine(menuItem, item);
+    if ('error' in priced) {
+      throw new BadRequestError(priced.error);
+    }
+
     return {
       menu_item_id: item.menu_item_id,
       quantity: item.quantity,
-      unit_price: menuItem.price,
+      unit_price: priced.unit_price,
       special_instructions: item.special_instructions ?? null,
+      weight_grams: priced.weight_grams,
       status: 'PENDING',
     };
   }
@@ -181,8 +190,13 @@ export class OrdersService {
   private groupOrderItems(items: CreateOrderRequest['items']): CreateOrderRequest['items'] {
     const grouped = new Map<string, CreateOrderRequest['items'][number]>; 
 
+    let weighedLines = 0;
     for (const item of items) {
-      const key = `${item.menu_item_id}::${item.special_instructions ?? ''}`;
+      // A weighed portion is its own line: merging two of them would add their
+      // quantities and silently drop one of the weights.
+      const key = item.weight_grams
+        ? `${item.menu_item_id}::weighed::${weighedLines++}`
+        : `${item.menu_item_id}::${item.special_instructions ?? ''}`;
       const existing = grouped.get(key);
       if (existing) {
         existing.quantity += item.quantity;

@@ -18,6 +18,7 @@ export class OrdersRepository {
       unit_price: number;
       special_instructions: string | null;
       status: string;
+      weight_grams?: number | null;
     }>,
     initialStatus: string = 'CREATED',
     tokenNumber: string | null = null,
@@ -53,7 +54,7 @@ export class OrdersRepository {
       // A brand-new order is always "round 1" — the first ticket that goes to the kitchen.
       items.forEach((item) => {
         placeholders.push(
-          `($${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, 1)`,
+          `($${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, 1)`,
         );
         itemValues.push(
           order.id,
@@ -63,13 +64,14 @@ export class OrdersRepository {
           item.unit_price,
           item.special_instructions,
           item.status,
+          item.weight_grams ?? null,
         );
       });
 
       const itemsResult = await client.query(
-        `INSERT INTO order_items (order_id, restaurant_id, menu_item_id, quantity, unit_price, special_instructions, status, round)
+        `INSERT INTO order_items (order_id, restaurant_id, menu_item_id, quantity, unit_price, special_instructions, status, weight_grams, round)
          VALUES ${placeholders.join(", ")}
-         RETURNING id, order_id, restaurant_id, menu_item_id, quantity, unit_price, special_instructions, status, round, created_at, updated_at`,
+         RETURNING id, order_id, restaurant_id, menu_item_id, quantity, unit_price, special_instructions, status, weight_grams, round, created_at, updated_at`,
         itemValues,
       );
 
@@ -113,6 +115,7 @@ export class OrdersRepository {
               'restaurant_id', oi.restaurant_id,
               'menu_item_id', oi.menu_item_id,
               'menu_item_name', mi.name,
+              'weight_grams', oi.weight_grams,
               'quantity', oi.quantity,
               'unit_price', oi.unit_price,
               'special_instructions', oi.special_instructions,
@@ -200,6 +203,7 @@ export class OrdersRepository {
       unit_price: number;
       special_instructions: string | null;
       status: string;
+      weight_grams?: number | null;
     }>,
   ): Promise<{ order: Order; items: OrderItem[] }> {
     const client = await pool.connect();
@@ -224,8 +228,8 @@ export class OrdersRepository {
 
       for (const item of items) {
         await client.query(
-          `INSERT INTO order_items (order_id, restaurant_id, menu_item_id, quantity, unit_price, special_instructions, status, round)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+          `INSERT INTO order_items (order_id, restaurant_id, menu_item_id, quantity, unit_price, special_instructions, status, round, weight_grams)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
           [
             orderId,
             restaurantId,
@@ -235,6 +239,7 @@ export class OrdersRepository {
             item.special_instructions,
             item.status,
             nextRound,
+            item.weight_grams ?? null,
           ],
         );
       }
@@ -337,6 +342,7 @@ export class OrdersRepository {
             'restaurant_id', oi.restaurant_id,
             'menu_item_id', oi.menu_item_id,
             'menu_item_name', mi.name,
+            'weight_grams', oi.weight_grams,
             'quantity', oi.quantity,
             'unit_price', oi.unit_price,
             'special_instructions', oi.special_instructions,
@@ -447,7 +453,7 @@ export class OrdersRepository {
           json_agg(
             json_build_object(
               'id', oi.id, 'order_id', oi.order_id, 'restaurant_id', oi.restaurant_id,
-              'menu_item_id', oi.menu_item_id, 'menu_item_name', mi.name, 'quantity', oi.quantity,
+              'menu_item_id', oi.menu_item_id, 'menu_item_name', mi.name, 'weight_grams', oi.weight_grams, 'quantity', oi.quantity,
               'unit_price', oi.unit_price, 'special_instructions', oi.special_instructions,
               'status', oi.status, 'kot_printed_at', oi.kot_printed_at, 'round', oi.round,
               'served_at', oi.served_at,
