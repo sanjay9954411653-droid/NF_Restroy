@@ -1,6 +1,7 @@
 import { pool, query } from '@/config/database';
 import { Payment, PaymentStats } from './payments.types';
 import { getOrderPayableTotal } from '@/shared/billing';
+import { isToday } from '@/shared/businessTime';
 
 export class PaymentsRepository {
   async createPayment(
@@ -229,10 +230,10 @@ export class PaymentsRepository {
   async getStats(restaurantId: string): Promise<PaymentStats> {
     const result = await query(
       `SELECT
-         COUNT(*) FILTER (WHERE DATE(created_at) = CURRENT_DATE) AS payments_today,
-         COALESCE(SUM(amount) FILTER (WHERE status = 'PAID' AND DATE(created_at) = CURRENT_DATE), 0) AS paid_amount_today,
-         COALESCE(SUM(amount) FILTER (WHERE status = 'REFUNDED' AND DATE(created_at) = CURRENT_DATE), 0) AS refunded_amount_today,
-         COUNT(*) FILTER (WHERE status = 'PENDING' AND DATE(created_at) = CURRENT_DATE) AS pending_payments_today
+         COUNT(*) FILTER (WHERE ${isToday('created_at')}) AS payments_today,
+         COALESCE(SUM(amount) FILTER (WHERE status = 'PAID' AND ${isToday('created_at')}), 0) AS paid_amount_today,
+         COALESCE(SUM(amount) FILTER (WHERE status = 'REFUNDED' AND ${isToday('created_at')}), 0) AS refunded_amount_today,
+         COUNT(*) FILTER (WHERE status = 'PENDING' AND ${isToday('created_at')}) AS pending_payments_today
        FROM payments
        WHERE restaurant_id = $1`,
       [restaurantId]
