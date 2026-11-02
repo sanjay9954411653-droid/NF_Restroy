@@ -5,6 +5,7 @@ import { useSocket } from '../contexts/SocketContext'
 import { Order, OrderStatus } from '../types/order'
 import { ClockIcon, CheckCircleIcon, WifiIcon, ExclamationCircleIcon, PrinterIcon } from '@heroicons/react/24/outline'
 import { formatElapsed } from '../lib/utils'
+import { formatWeight } from '../lib/weight'
 import { printKOT } from '../components/PrintKOT'
 import {
   enablePushNotifications,
@@ -45,6 +46,7 @@ interface OrderWithItems extends Order {
     menu_item_id: string
     menu_item_name?: string
     quantity: number
+    weight_grams?: number | null // items sold by weight: ordered weight (quantity is 1)
     special_instructions?: string
     status?: 'PENDING' | 'PREPARING' | 'DONE'
   }>
@@ -53,6 +55,7 @@ interface OrderWithItems extends Order {
     menu_item_id: string
     menu_item_name?: string
     quantity: number
+    weight_grams?: number | null // items sold by weight: ordered weight (quantity is 1)
     special_instructions?: string
     status?: 'PENDING' | 'PREPARING' | 'DONE'
   }>
@@ -629,8 +632,8 @@ const [pushBusy, setPushBusy] = useState(false)
                               </svg>
                             )}
                           </button>
-                          <span className="w-5 h-5 rounded bg-white/10 flex items-center justify-center text-xs font-bold text-white shrink-0 mt-0.5">
-                            {item.quantity}
+                          <span className="min-w-[1.25rem] h-5 px-1 rounded bg-white/10 flex items-center justify-center text-xs font-bold text-white shrink-0 mt-0.5 whitespace-nowrap">
+                            {item.weight_grams ? formatWeight(item.weight_grams) : item.quantity}
                           </span>
                           <div className="flex-1 min-w-0">
                             <p className={`text-sm font-medium leading-tight ${isDone ? 'line-through text-white/40' : 'text-white'}`}>
