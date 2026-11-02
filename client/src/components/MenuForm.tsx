@@ -124,7 +124,7 @@ const MenuForm: React.FC<MenuFormProps> = ({ menuItem, onClose, onSave }) => {
   const validate = () => {
     const newErrors: Record<string, string> = {};
     if (!name.trim()) newErrors.name = 'Name is required.';
-    if (price <= 0) newErrors.price = 'Price must be positive.';
+    if (!(price > 0)) newErrors.price = 'Price must be positive.';
     if (!categoryId) newErrors.categoryId = 'Category is required.';
     if (prepTime <= 0) newErrors.prepTime = 'Prep time must be at least 1 minute.';
     if (imageUrl.trim() && !/^https:\/\//i.test(imageUrl.trim())) newErrors.imageUrl = 'Image link must start with https://';
