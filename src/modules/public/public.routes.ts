@@ -21,9 +21,9 @@ import { publicOrderRateLimiter } from '@/shared/middleware/rateLimiter';
 import { env } from '@/config/env';
 import { createRazorpayOrder } from '@/modules/payments/gateways/razorpay.gateway';
 import { getOrderPayableTotal } from '@/shared/billing';
-import { priceOrderLine, MAX_WEIGHT_GRAMS } from '@/shared/weight';
 import { modifierRepository } from '@/modules/modifiers/modifier.repository'; import { pushService } from '@/modules/push/push.service';
 import { z } from 'zod';
+import { isToday } from '@/shared/businessTime';
 
 const router = Router();
 
@@ -343,8 +343,6 @@ const GuestOrderSchema = z.object({
         menu_item_id: z.string().uuid(),
         quantity: z.number().int().min(1),
         special_instructions: z.string().max(500).optional(),
-        // Only for items sold by weight (per kg / per 100 g): the weight the customer entered, in grams.
-        weight_grams: z.number().int().min(1).max(MAX_WEIGHT_GRAMS).optional(),
         modifiers: z.array(ModifierSelectionSchema).optional().default([]),
       }),
     )
@@ -377,7 +375,6 @@ router.post('/order/:slug', publicOrderRateLimiter, async (req: Request, res: Re
       unit_price: number;
       special_instructions: string | null;
       status: string;
-      weight_grams: number | null;
       modifiers: Array<{
         modifier_group_id: string;
         modifier_group_name: string;
@@ -392,10 +389,9 @@ router.post('/order/:slug', publicOrderRateLimiter, async (req: Request, res: Re
       if (!menuItem || menuItem.restaurant_id !== restaurantId || !menuItem.is_active) {
         throw new BadRequestError('Menu item not available');
       }
-      // Items sold by weight (per kg / per 100 g) are priced here from the weight the
-      // customer entered. The price is never taken from the customer's device.
-      const priced = priceOrderLine(menuItem as any, { quantity: item.quantity, weight_grams: item.weight_grams });
-      if ('error' in priced) throw new BadRequestError(priced.error);
+      if ((menuItem as any).price_unit && (menuItem as any).price_unit !== 'PIECE') {
+        throw new BadRequestError(`"${menuItem.name}" is sold by weight — please ask the staff to add it for you`);
+      }
 
       // Calculate modifier price adjustments
       let modifierAdjustment = 0;
@@ -447,10 +443,9 @@ router.post('/order/:slug', publicOrderRateLimiter, async (req: Request, res: Re
       orderItems.push({
         menu_item_id: item.menu_item_id,
         quantity: item.quantity,
-        unit_price: priced.unit_price + modifierAdjustment,
+        unit_price: Number(menuItem.price) + modifierAdjustment,
         special_instructions: item.special_instructions ?? null,
         status: 'PENDING',
-        weight_grams: priced.weight_grams,
         modifiers: validatedModifiers,
       });
     }
@@ -577,7 +572,6 @@ router.post('/order/:slug', publicOrderRateLimiter, async (req: Request, res: Re
             unit_price: i.unit_price,
             special_instructions: i.special_instructions,
             status: i.status,
-            weight_grams: i.weight_grams,
           })),
         )
       : await ordersRepository.createOrderWithItems(
@@ -596,7 +590,6 @@ router.post('/order/:slug', publicOrderRateLimiter, async (req: Request, res: Re
             unit_price: i.unit_price,
             special_instructions: i.special_instructions,
             status: i.status,
-            weight_grams: i.weight_grams,
           })),
           'CREATED',
           tokenNumber,
@@ -878,7 +871,7 @@ router.get('/tokens/:restaurantId', async (req: Request, res: Response, next: Ne
        WHERE restaurant_id = $1
          AND token_number IS NOT NULL
          AND status IN ('ACCEPTED', 'PREPARING', 'READY')
-         AND DATE(created_at) = CURRENT_DATE
+         AND ${isToday('created_at')}
        ORDER BY
          CASE status WHEN 'READY' THEN 0 WHEN 'PREPARING' THEN 1 ELSE 2 END,
          token_number ASC
