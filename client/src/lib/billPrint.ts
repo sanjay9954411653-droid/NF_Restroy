@@ -1,9 +1,10 @@
 /**
- * ONE bill layout for every print button (Bill screen, Table panel,
- * Order details). Same data, same maths (calcBill), same look.
+ * ONE bill for the whole app: same data, same maths (computeBill), same look.
+ * Used by the Bill screen, every print button, and the totals shown on the
+ * Table panel / Order details, so the amount is identical everywhere.
  *
- * The printed bill is fully self-contained (own CSS, no Tailwind needed),
- * so it can't come out squished because a stylesheet was late.
+ * The printed bill is self-contained (own CSS, no Tailwind needed), so it
+ * can't come out squished because a stylesheet was late.
  */
 import api from '../api'
 import type { Order, OrderItem } from '../types/order'
@@ -59,43 +60,61 @@ const esc = (s: unknown): string =>
 const qrCodeUrl = (data: string, size = 120) =>
   `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&margin=0&data=${encodeURIComponent(data)}`
 
-/** Loads everything the bill needs from the API, so any button can print it by order id. */
-export async function loadBillData(orderId: string, tableNumber?: string): Promise<BillData> {
-  const [orderRes, restRes, couponRes] = await Promise.all([
-    api.get(`/orders/${orderId}`),
+function parseRestaurant(r: any): BillRestaurant {
+  return {
+    name: r.name,
+    logo_url: r.logo_url ?? null,
+    gstin: r.gstin ?? null,
+    fssai_no: r.fssai_no ?? null,
+    upi_id: r.upi_id ?? null,
+    address: r.address ?? null,
+    phone: r.phone ?? null,
+    tax_rate: Number(r.tax_rate ?? 5),
+    tax_inclusive: Boolean(r.tax_inclusive),
+    discount_percent: Number(r.discount_percent ?? 0),
+    service_charge_percent: Number(r.service_charge_percent ?? 0),
+    other_charges_percent: Number(r.other_charges_percent ?? 0),
+    extra_charges_amount: Number(r.extra_charges_amount ?? 0),
+    show_name_in_bill: r.show_name_in_bill !== false,
+    bill_social_keys: r.bill_social_keys || [],
+    social_links: r.social_links || {},
+  }
+}
+
+/** Restaurant billing settings + the coupon on an order (what changes the total besides the items). */
+export async function loadBillingContext(orderId: string): Promise<{ restaurant: BillRestaurant; coupon: BillCoupon }> {
+  const [restRes, couponRes] = await Promise.all([
     api.get('/restaurants/me'),
     couponApi.forOrder(orderId).catch(() => null),
   ])
-  const data = orderRes.data.data
-  const order: Order = data?.order ?? data
-  const items: OrderItem[] = (order as any)?.items || (order as any)?.order_items || data?.items || []
-  const r = restRes.data.data
   return {
-    order,
-    items,
-    tableNumber: tableNumber ?? (order?.table?.table_number ? String(order.table.table_number) : undefined),
+    restaurant: parseRestaurant(restRes.data.data),
     coupon: {
       code: couponRes?.data?.data?.code ?? null,
       discount: Number(couponRes?.data?.data?.discount || 0),
     },
-    restaurant: {
-      name: r.name,
-      logo_url: r.logo_url ?? null,
-      gstin: r.gstin ?? null,
-      fssai_no: r.fssai_no ?? null,
-      upi_id: r.upi_id ?? null,
-      address: r.address ?? null,
-      phone: r.phone ?? null,
-      tax_rate: Number(r.tax_rate ?? 5),
-      tax_inclusive: Boolean(r.tax_inclusive),
-      discount_percent: Number(r.discount_percent ?? 0),
-      service_charge_percent: Number(r.service_charge_percent ?? 0),
-      other_charges_percent: Number(r.other_charges_percent ?? 0),
-      extra_charges_amount: Number(r.extra_charges_amount ?? 0),
-      show_name_in_bill: r.show_name_in_bill !== false,
-      bill_social_keys: r.bill_social_keys || [],
-      social_links: r.social_links || {},
-    },
+  }
+}
+
+/** THE one place the bill amounts are calculated. */
+export function computeBill({ order, items, restaurant, coupon }: Pick<BillData, 'order' | 'items' | 'restaurant' | 'coupon'>) {
+  const rawSubtotal = items.reduce((s, i) => s + Number(i.unit_price || 0) * i.quantity, 0)
+  // QR orders can already have a coupon / points discount baked into total_amount.
+  const bakedDiscount = items.length ? Math.max(0, rawSubtotal - Number(order.total_amount || 0)) : 0
+  return calcBill(rawSubtotal, restaurant, coupon.discount + bakedDiscount)
+}
+
+/** Loads everything the bill needs, so any button can print it by order id. */
+export async function loadBillData(orderId: string, tableNumber?: string): Promise<BillData> {
+  const [orderRes, ctx] = await Promise.all([api.get(`/orders/${orderId}`), loadBillingContext(orderId)])
+  const data = orderRes.data.data
+  const order: Order = data?.order ?? data
+  const items: OrderItem[] = (order as any)?.items || (order as any)?.order_items || data?.items || []
+  return {
+    order,
+    items,
+    tableNumber: tableNumber ?? (order?.table?.table_number ? String(order.table.table_number) : undefined),
+    ...ctx,
   }
 }
 
@@ -121,11 +140,9 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#000;background
 @media print{body{padding:0}}
 `
 
-export function buildBillBody({ order, items, restaurant, tableNumber, coupon }: BillData): string {
-  const rawSubtotal = items.reduce((s, i) => s + Number(i.unit_price || 0) * i.quantity, 0)
-  // QR orders can already have a coupon / points discount baked into total_amount.
-  const bakedDiscount = items.length ? Math.max(0, rawSubtotal - Number(order.total_amount || 0)) : 0
-  const b = calcBill(rawSubtotal, restaurant, coupon.discount + bakedDiscount)
+export function buildBillBody(data: BillData): string {
+  const { order, items, restaurant, tableNumber, coupon } = data
+  const b = computeBill(data)
   const isParcel = order.order_type !== 'DINE_IN'
   const social = restaurant.bill_social_keys
     .map((key) => ({ key, url: restaurant.social_links[key], label: SOCIAL_LABELS[key] || key }))
