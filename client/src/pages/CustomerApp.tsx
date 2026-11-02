@@ -14,6 +14,8 @@ import axios from 'axios'
 import { MenuItem, MenuCategory } from '../types/menu'
 import { formatCurrency } from '../lib/utils'
 import { optimizeImageUrl } from '../lib/imageUpload'
+import WeightEntryModal from '../components/WeightEntryModal'
+import { formatWeight, priceUnitSuffix, weightedAmount, isWeighed } from '../lib/weight'
 import {
   ShoppingCartIcon,
   PlusIcon,
@@ -92,6 +94,10 @@ interface CartLine {
   quantity: number
   is_vegetarian: boolean
   modifiers: SelectedModifier[]
+  // Only for items sold by weight (kg / 100 g): the chosen weight, and the menu rate it was priced at
+  weight_grams?: number
+  price_unit?: 'KG' | '100G'
+  unit_rate?: number
 }
 
 interface Table {
@@ -219,6 +225,7 @@ const CustomerApp: React.FC = () => {
   const [ordersView, setOrdersView] = useState<OrdersView | null>(null)
   const tracked = useTrackedOrders(slug)
   const [notice, setNotice] = useState('')
+  const [weightItem, setWeightItem] = useState<MenuItem | null>(null)   // item sold by weight waiting for its weight
   const [diet, setDiet] = useState<DietFilter>('ALL')
   const [billing, setBilling] = useState<BillingSettings>(LEGACY_BILLING)
   const [ratingSummary, setRatingSummary] = useState<{ count: number; average: number } | null>(null)
@@ -440,6 +447,30 @@ const CustomerApp: React.FC = () => {
     setCart((prev) => prev.map((c) => (c.cart_key === cartKey ? { ...c, quantity: c.quantity + delta } : c)).filter((c) => c.quantity > 0))
   }
 
+  // Add an item sold by kg / 100 g with the weight the customer entered.
+  // The server works out the real price again from the weight.
+  const addWeighedToCart = (item: MenuItem, grams: number) => {
+    const unit = item.price_unit as 'KG' | '100G'
+    const cartKey = `${item.id}@${grams}g`
+    const amount = weightedAmount(Number(item.price) || 0, unit, grams)
+    setCart((prev) => {
+      if (prev.some((c) => c.cart_key === cartKey)) return prev   // same weight already in the cart
+      return [...prev, {
+        cart_key: cartKey,
+        id: item.id,
+        name: item.name,
+        price: amount,
+        quantity: 1,
+        is_vegetarian: item.is_vegetarian,
+        modifiers: [],
+        weight_grams: grams,
+        price_unit: unit,
+        unit_rate: Number(item.price) || 0,
+      }]
+    })
+    setNotice(`${item.name} (${formatWeight(grams)}) added to your order`)
+  }
+
   // Can this topping be taken off? Not if the group needs a minimum number of picks.
   const canRemoveModifier = (line: CartLine, mod: SelectedModifier): boolean => {
     const group = (itemModifierGroups[line.id] || []).find((g) => g.id === mod.group_id)
@@ -625,6 +656,7 @@ const CustomerApp: React.FC = () => {
         items: cart.map((c) => ({
           menu_item_id: c.id,
           quantity: c.quantity,
+          ...(c.weight_grams ? { weight_grams: c.weight_grams } : {}),
           modifiers: c.modifiers.map((m) => ({
             modifier_group_id: m.group_id,
             modifier_group_name: m.group_name,
@@ -1012,9 +1044,9 @@ const CustomerApp: React.FC = () => {
   )
 
   const handleAdd = (item: MenuItem) => {
-    // Sold by kg / 100 g: the weight is entered by staff, so it can't go in a self-order cart
-    if (item.price_unit === 'KG' || item.price_unit === '100G') {
-      setNotice(`${item.name} is sold by weight — please ask the staff to add it`)
+    // Sold by kg / 100 g: ask the customer for the weight they want
+    if (isWeighed(item.price_unit)) {
+      setWeightItem(item)
       return
     }
     // Always open the item detail sheet so customers can review the dish
@@ -1028,10 +1060,12 @@ const CustomerApp: React.FC = () => {
     const menuById = new Map(items.map((i) => [i.id, i]))
     const rebuilt: CartLine[] = []
     let skipped = 0
+    let weighed = 0
 
     for (const line of lines) {
       const item = menuById.get(line.menu_item_id)
       if (!item) { skipped++; continue }   // dish is no longer on the menu
+      if (isWeighed(item.price_unit)) { weighed++; continue }   // sold by weight: the weight must be entered again
 
       // Keep only the options that still exist, at their current price.
       const groups = itemModifierGroups[item.id] || []
@@ -1073,11 +1107,10 @@ const CustomerApp: React.FC = () => {
       setCartOpen(true)
     }
     setOrdersView(null)
-    setNotice(
-      skipped > 0
-        ? `${skipped} ${skipped === 1 ? 'dish is' : 'dishes are'} no longer on the menu and ${skipped === 1 ? 'was' : 'were'} left out.`
-        : '',
-    )
+    const notes: string[] = []
+    if (skipped > 0) notes.push(`${skipped} ${skipped === 1 ? 'dish is' : 'dishes are'} no longer on the menu and ${skipped === 1 ? 'was' : 'were'} left out.`)
+    if (weighed > 0) notes.push(`${weighed} ${weighed === 1 ? 'item is' : 'items are'} sold by weight — please add ${weighed === 1 ? 'it' : 'them'} again with the weight.`)
+    setNotice(notes.join(' '))
   }
 
   const renderRow = (item: MenuItem) => {
@@ -1443,8 +1476,24 @@ const CustomerApp: React.FC = () => {
                           ))}
                         </div>
                       )}
-                      <p className="text-xs text-gray-400">{formatCurrency(line.price)} each</p>
+                      {line.weight_grams ? (
+                        <p className="text-xs text-gray-400">
+                          {formatWeight(line.weight_grams)} × {formatCurrency(line.unit_rate || 0)} {priceUnitSuffix(line.price_unit)}
+                        </p>
+                      ) : (
+                        <p className="text-xs text-gray-400">{formatCurrency(line.price)} each</p>
+                      )}
                     </div>
+                    {line.weight_grams ? (
+                      <button
+                        type="button"
+                        onClick={() => changeQty(line.cart_key, -1)}
+                        className="p-2 rounded-full text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+                        aria-label={`Remove ${line.name}`}
+                      >
+                        <XMarkIcon className="w-4 h-4" />
+                      </button>
+                    ) : (
                     <div className="flex items-center border border-gray-200 rounded-xl overflow-hidden">
                       <button onClick={() => changeQty(line.cart_key, -1)} className="px-3 py-2 hover:bg-gray-100 text-gray-600">
                         <MinusIcon className="w-3.5 h-3.5" />
@@ -1454,6 +1503,7 @@ const CustomerApp: React.FC = () => {
                         <PlusIcon className="w-3.5 h-3.5" />
                       </button>
                     </div>
+                    )}
                     <span className="text-sm font-semibold text-gray-900 w-16 text-right">
                       {formatCurrency(line.price * line.quantity)}
                     </span>
@@ -1786,6 +1836,20 @@ const CustomerApp: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Weight entry for items sold by kg / 100 g */}
+      {weightItem && (
+        <WeightEntryModal
+          itemName={weightItem.name}
+          price={Number(weightItem.price) || 0}
+          unit={weightItem.price_unit as 'KG' | '100G'}
+          onConfirm={(grams) => {
+            addWeighedToCart(weightItem, grams)
+            setWeightItem(null)
+          }}
+          onClose={() => setWeightItem(null)}
+        />
       )}
     </div>
   )
