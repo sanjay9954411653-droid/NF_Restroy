@@ -134,7 +134,9 @@ export class ZomatoService {
         orderItems.push({
           menu_item_id:         mapping.menu_item_id,
           quantity:             item.quantity,
-          unit_price:           menuItem?.price ?? item.price, // prefer our price
+          // Prefer our price, except for dishes sold by weight: our price is per kg / per 100 g,
+          // not per portion, so Zomato's own line price is the right amount there.
+          unit_price:           menuItem && (menuItem.price_unit ?? 'PIECE') === 'PIECE' ? menuItem.price : item.price,
           special_instructions: null,
           status:               'PENDING',
         });
