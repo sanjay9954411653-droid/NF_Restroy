@@ -27,6 +27,7 @@ import Card from '../components/Card'
 import EmptyState from '../components/EmptyState'
 import Loading from '../components/Loading'
 import { Table, TableWithStatus } from '../types/table'
+import { BillingSettings, calcBill, normalizeBilling } from '../lib/billing'
 import {
   PlusIcon,
   Cog6ToothIcon,
@@ -85,6 +86,19 @@ const Tables: React.FC = () => {
   const [billTableNumber, setBillTableNumber] = useState<string | undefined>()
   const [panelRefresh, setPanelRefresh] = useState(0)
 
+  // The floor must show what the customer actually pays (items + service/other
+  // charges + GST), same as the Bill screen — not the raw item total.
+  const [billing, setBilling] = useState<BillingSettings | null>(null)
+  useEffect(() => {
+    api.get('/restaurants/me')
+      .then((res) => setBilling(normalizeBilling(res.data.data)))
+      .catch(() => {})
+  }, [])
+  const payable = useCallback(
+    (amount: number) => (billing ? Math.round(calcBill(amount, billing).grandTotal * 100) / 100 : amount),
+    [billing],
+  )
+
   const fetchTables = useCallback(async () => {
     try {
       const res = await api.get('/tables/with-status')
@@ -120,9 +134,9 @@ const Tables: React.FC = () => {
     const occupied = tables.filter((t) => t.active_order && t.active_order.status !== 'READY').length
     const ready = tables.filter((t) => t.active_order?.status === 'READY').length
     const free = tables.filter((t) => !t.active_order).length
-    const openRevenue = tables.reduce((s, t) => s + (t.active_order?.total_amount || 0), 0)
+    const openRevenue = tables.reduce((s, t) => s + payable(t.active_order?.total_amount || 0), 0)
     return { total: tables.length, occupied, ready, free, openRevenue }
-  }, [tables])
+  }, [tables, payable])
 
   // Tap handler — free table → new order; READY table → bill screen; occupied → panel
   const handleTableTap = (t: TableWithStatus) => {
@@ -190,7 +204,7 @@ const Tables: React.FC = () => {
           { label: 'Free', value: stats.free, color: 'text-emerald-600' },
           { label: 'Occupied', value: stats.occupied, color: 'text-blue-600' },
           { label: 'Ready to pay', value: stats.ready, color: 'text-amber-600' },
-          { label: 'Open revenue', value: `₹${stats.openRevenue.toFixed(0)}`, color: 'text-gray-900' },
+          { label: 'Open revenue', value: `₹${stats.openRevenue.toFixed(2)}`, color: 'text-gray-900' },
         ].map((s) => (
           <Card key={s.label} padding="sm">
             <p className="text-xs text-gray-500">{s.label}</p>
@@ -245,7 +259,7 @@ const Tables: React.FC = () => {
                   {table.active_order && (
                     <div className="mt-2 space-y-0.5">
                       <p className="text-sm font-bold text-gray-900">
-                        ₹{table.active_order.total_amount.toFixed(0)}
+                        ₹{payable(table.active_order.total_amount).toFixed(2)}
                       </p>
                       <p className="text-xs text-gray-400">
                         {table.active_order.item_count} item{table.active_order.item_count !== 1 ? 's' : ''} · {table.active_order.order_number.slice(-4)}
