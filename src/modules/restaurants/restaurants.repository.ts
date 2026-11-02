@@ -1,5 +1,6 @@
 import { query } from '@/config/database';
 import { Restaurant, RestaurantSection, RestaurantStats, RestaurantTheme } from './restaurants.types';
+import { isToday, todayLocal } from '@/shared/businessTime';
 
 const RESTAURANT_COLS = `id, name, slug, auto_approve_online_orders, delay_threshold_minutes,
   qr_mode, features, gstin, tax_rate::float8 AS tax_rate, tax_inclusive,
@@ -141,13 +142,13 @@ export class RestaurantsRepository {
       `UPDATE restaurants
        SET
          token_counter = CASE
-           WHEN token_daily_reset AND (token_last_reset_at IS NULL OR token_last_reset_at < CURRENT_DATE)
+           WHEN token_daily_reset AND (token_last_reset_at IS NULL OR token_last_reset_at < ${todayLocal})
            THEN 1
            ELSE token_counter + 1
          END,
          token_last_reset_at = CASE
-           WHEN token_daily_reset AND (token_last_reset_at IS NULL OR token_last_reset_at < CURRENT_DATE)
-           THEN CURRENT_DATE
+           WHEN token_daily_reset AND (token_last_reset_at IS NULL OR token_last_reset_at < ${todayLocal})
+           THEN ${todayLocal}
            ELSE token_last_reset_at
          END
        WHERE id = $1
@@ -182,7 +183,7 @@ export class RestaurantsRepository {
     );
     const ordersResult = await query(
       `SELECT COUNT(*) as total_orders, COALESCE(SUM(total_amount), 0) as revenue
-       FROM orders WHERE restaurant_id = $1 AND DATE(created_at) = CURRENT_DATE`,
+       FROM orders WHERE restaurant_id = $1 AND ${isToday('created_at')}`,
       [restaurantId],
     );
     const users = usersResult.rows[0];
