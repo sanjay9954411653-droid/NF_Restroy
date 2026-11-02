@@ -7,6 +7,7 @@ import Button from './Button'
 import Input from './Input'
 import { formatCurrency } from '../lib/utils'
 import { calcBill } from '../lib/billing'
+import { usePayable } from '../lib/useBillTotal'
 import toast from 'react-hot-toast'
 
 const METHODS: PaymentMethod[] = ['CASH', 'CARD', 'UPI', 'ONLINE']
@@ -30,6 +31,7 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
   onClose,
   onPaymentSuccess,
 }) => {
+  const payable = usePayable()
   const [orders, setOrders] = useState<Order[]>([])
   const [selectedOrderId, setSelectedOrderId] = useState(initialOrderId)
 
@@ -460,11 +462,7 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
                   value={o.id}
                 >
                   {o.order_number} —{' '}
-                  {formatCurrency(
-                    Number(
-                      o.total_amount
-                    )
-                  )}
+                  {formatCurrency(payable(Number(o.total_amount)))}
                 </option>
               ))}
             </select>
