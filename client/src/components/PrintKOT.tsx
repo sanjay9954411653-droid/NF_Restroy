@@ -20,6 +20,7 @@ import React from 'react'
 import { Order, OrderItem } from '../types/order'
 import { formatDate } from '../lib/utils'
 import { formatWeight } from '../lib/weight'
+import { printHtml } from '../lib/printHtml'
 
 function esc(s: string | undefined | null): string {
   if (!s) return ''
@@ -38,9 +39,6 @@ interface PrintKOTProps {
  * Opens a new window, writes the HTML, triggers print, closes.
  */
 export function printKOT(order: Order, items: OrderItem[], restaurantName = 'Kitchen', round?: number): void {
-  const win = window.open('', '_blank', 'width=400,height=600')
-  if (!win) return
-
   const fmtMods = (mods?: any[]) =>
     mods && mods.length > 0
       ? `<div style="font-size:11px;font-weight:normal;color:#555;margin-top:2px;">${mods
@@ -67,7 +65,7 @@ export function printKOT(order: Order, items: OrderItem[], restaurantName = 'Kit
     )
     .join('')
 
-  win.document.write(`
+  printHtml(`
     <!DOCTYPE html>
     <html>
     <head>
@@ -131,13 +129,6 @@ export function printKOT(order: Order, items: OrderItem[], restaurantName = 'Kit
     </body>
     </html>
   `)
-
-  win.document.close()
-  win.focus()
-  setTimeout(() => {
-    win.print()
-    win.close()
-  }, 300)
 }
 
 /**

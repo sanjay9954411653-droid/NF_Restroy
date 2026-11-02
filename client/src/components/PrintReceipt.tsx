@@ -20,6 +20,7 @@ import React from 'react'
 import { Order, OrderItem } from '../types/order'
 import { formatDate } from '../lib/utils'
 import { formatWeight, ratePerKg } from '../lib/weight'
+import { printHtml } from '../lib/printHtml'
 
 function esc(s: string | undefined | null): string {
   if (!s) return ''
@@ -49,9 +50,6 @@ export function printReceipt(
   restaurantName = 'Restaurant',
   paymentMethod = 'CASH',
 ): void {
-  const win = window.open('', '_blank', 'width=400,height=700')
-  if (!win) return
-
   const total = Number(order.total_amount || 0)
 
   const fmtMods = (mods?: any[]) =>
@@ -79,7 +77,7 @@ export function printReceipt(
     )
     .join('')
 
-  win.document.write(`
+  printHtml(`
     <!DOCTYPE html>
     <html>
     <head>
@@ -175,13 +173,6 @@ export function printReceipt(
     </body>
     </html>
   `)
-
-  win.document.close()
-  win.focus()
-  setTimeout(() => {
-    win.print()
-    win.close()
-  }, 300)
 }
 
 /**

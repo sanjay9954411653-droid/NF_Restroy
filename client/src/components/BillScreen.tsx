@@ -24,6 +24,7 @@ import PaymentForm from './PaymentForm'
 import { PrinterIcon, CurrencyDollarIcon, XMarkIcon } from '@heroicons/react/24/outline'
 import { calcBill } from '../lib/billing'
 import { couponApi } from '../lib/growthApi'
+import { printHtml } from '../lib/printHtml'
 
 interface RestaurantInfo {
   name: string
@@ -156,12 +157,8 @@ const BillScreen: React.FC<BillScreenProps> = ({ orderId, tableNumber, onClose, 
   const handlePrint = () => {
     if (!printRef.current) return
     const content = printRef.current.innerHTML
-    const win = window.open('', '_blank', 'width=400,height=700')
-    if (!win) return
 
-    // Pull in the app's real stylesheet so the classes used in the preview
-    // (spacing, sizing, alignment) actually render here — without this the
-    // print window has no matching CSS and every row collapses with no gap.
+    // Reuse the app's real stylesheet so the Tailwind classes in the preview render.
     const styleTags = Array.from(document.querySelectorAll('link[rel="stylesheet"], style'))
       .map((el) => {
         if (el.tagName === 'LINK') {
@@ -172,37 +169,17 @@ const BillScreen: React.FC<BillScreenProps> = ({ orderId, tableNumber, onClose, 
       })
       .join('\n')
 
-    win.document.write(`
-      <html><head><title>Bill</title>
+    printHtml(`<!DOCTYPE html>
+      <html><head><meta charset="utf-8"><title>Bill</title>
       ${styleTags}
       <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: 'Courier New', monospace; font-size: 12px; width: 80mm; padding: 8px; }
-        h1 { font-size: 16px; text-align: center; font-weight: bold; }
-        .center { text-align: center; }
-        .row { display: flex; justify-content: space-between; padding: 2px 0; }
-        .divider { border-top: 1px dashed #000; margin: 6px 0; }
-        .bold { font-weight: bold; }
-        .total-row { font-size: 14px; font-weight: bold; }
-        .tax-row { font-size: 11px; color: #555; }
+        body { font-family: 'Courier New', monospace; font-size: 12px; width: 80mm; margin: 0 auto; padding: 8px; background:#fff; }
         img { max-width: 100%; }
-        @media print { body { width: 80mm; } }
+        a { color: inherit; text-decoration: none; }
+        @page { size: 80mm auto; margin: 3mm; }
+        @media print { body { width: 80mm; padding: 0; } }
       </style>
-      </head><body>${content}</body></html>
-    `)
-    win.document.close()
-    win.focus()
-
-    // Wait for the stylesheet above to actually finish loading before
-    // printing — printing (or closing the window) too early can produce a
-    // PDF with none of the styling applied yet, which is exactly the
-    // "everything squished together" bug.
-    const triggerPrint = () => { win.print() }
-    if (win.document.readyState === 'complete') {
-      setTimeout(triggerPrint, 200)
-    } else {
-      win.addEventListener('load', () => setTimeout(triggerPrint, 200))
-    }
+      </head><body>${content}</body></html>`)
   }
 
   if (loading) return (
