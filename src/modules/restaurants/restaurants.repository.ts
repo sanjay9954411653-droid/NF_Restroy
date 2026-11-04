@@ -182,8 +182,10 @@ export class RestaurantsRepository {
       [restaurantId],
     );
     const ordersResult = await query(
-      `SELECT COUNT(*) as total_orders, COALESCE(SUM(total_amount), 0) as revenue
-       FROM orders WHERE restaurant_id = $1 AND ${isToday('created_at')}`,
+      `SELECT
+         (SELECT COUNT(*) FROM orders WHERE restaurant_id = $1 AND ${isToday('created_at')}) as total_orders,
+         (SELECT COALESCE(SUM(amount), 0) FROM payments
+           WHERE restaurant_id = $1 AND status = 'PAID' AND ${isToday('created_at')}) as revenue`,
       [restaurantId],
     );
     const users = usersResult.rows[0];
