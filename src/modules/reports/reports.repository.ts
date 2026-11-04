@@ -6,7 +6,6 @@ import {
   TopSellingItem,
   PaymentModeRow,
 } from "./reports.types";
-import { isToday, todayLocal, localDay } from '@/shared/businessTime';
 
 export class ReportsRepository {
   async getDashboardReport(restaurantId: string): Promise<DashboardReport> {
@@ -15,48 +14,48 @@ export class ReportsRepository {
          (SELECT COUNT(*)
           FROM orders
           WHERE restaurant_id = $1
-          AND ${isToday('created_at')}) AS total_orders_today,
+          AND DATE(created_at) = CURRENT_DATE) AS total_orders_today,
 
          (SELECT COUNT(*)
           FROM orders
           WHERE restaurant_id = $1
           AND status = 'COMPLETED'
-          AND ${isToday('created_at')}) AS completed_orders_today,
+          AND DATE(created_at) = CURRENT_DATE) AS completed_orders_today,
 
          (SELECT COUNT(*)
           FROM orders
           WHERE restaurant_id = $1
           AND status = 'CANCELLED'
-          AND ${isToday('created_at')}) AS cancelled_orders_today,
+          AND DATE(created_at) = CURRENT_DATE) AS cancelled_orders_today,
 
          (SELECT COUNT(*)
           FROM orders
           WHERE restaurant_id = $1
           AND status NOT IN ('COMPLETED', 'CANCELLED')
-          AND ${isToday('created_at')}) AS active_orders,
+          AND DATE(created_at) = CURRENT_DATE) AS active_orders,
 
          (SELECT COALESCE(SUM(total_amount), 0)
           FROM orders
           WHERE restaurant_id = $1
           AND status = 'COMPLETED'
-          AND ${isToday('created_at')}) AS revenue_today,
+          AND DATE(created_at) = CURRENT_DATE) AS revenue_today,
 
          (SELECT COUNT(*)
           FROM payments
           WHERE restaurant_id = $1
-          AND ${isToday('created_at')}) AS payments_today,
+          AND DATE(created_at) = CURRENT_DATE) AS payments_today,
 
          (SELECT COALESCE(SUM(amount), 0)
           FROM payments
           WHERE restaurant_id = $1
           AND status = 'PAID'
-          AND ${isToday('created_at')}) AS paid_amount_today,
+          AND DATE(created_at) = CURRENT_DATE) AS paid_amount_today,
 
          (SELECT COALESCE(SUM(amount), 0)
           FROM payments
           WHERE restaurant_id = $1
           AND status = 'REFUNDED'
-          AND ${isToday('created_at')}) AS refunded_amount_today,
+          AND DATE(created_at) = CURRENT_DATE) AS refunded_amount_today,
 
          (SELECT COUNT(*)
           FROM inventory_items
@@ -88,10 +87,32 @@ export class ReportsRepository {
     };
   }
 
+  /**
+   * Best sellers by quantity. Cancelled orders never count as sold.
+   * With `range`, only orders placed on those LOCAL dates count (the owner's
+   * midnight, not the server's) — used for the dashboard's "today" list.
+   */
   async getTopSellingItems(
     restaurantId: string,
     limit: number,
+    range?: { from: string; to: string; zoneCandidates: string[]; offsetMinutes: number },
   ): Promise<TopSellingItem[]> {
+    let dateFilter = '';
+    const params: unknown[] = [restaurantId, limit];
+
+    if (range) {
+      const known = await query(
+        `SELECT name FROM pg_timezone_names WHERE name = ANY($1::text[]) LIMIT 1`,
+        [range.zoneCandidates],
+      );
+      const zone: string | undefined = known.rows[0]?.name;
+      const localDate = zone
+        ? `((o.created_at AT TIME ZONE 'UTC') AT TIME ZONE $5::text)::date`
+        : `(o.created_at + make_interval(mins => $5::int))::date`;
+      dateFilter = `AND ${localDate} BETWEEN $3::date AND $4::date`;
+      params.push(range.from, range.to, zone ?? range.offsetMinutes);
+    }
+
     const result = await query(
       `SELECT
          oi.menu_item_id,
@@ -102,10 +123,12 @@ export class ReportsRepository {
        JOIN orders o ON oi.order_id = o.id
        JOIN menu_items mi ON oi.menu_item_id = mi.id
        WHERE o.restaurant_id = $1
+         AND o.status <> 'CANCELLED'
+         ${dateFilter}
        GROUP BY oi.menu_item_id, mi.name
-       ORDER BY total_quantity DESC
+       ORDER BY total_quantity DESC, total_revenue DESC
        LIMIT $2`,
-      [restaurantId, limit],
+      params,
     );
 
     return result.rows.map((row) => ({
@@ -130,15 +153,15 @@ export class ReportsRepository {
                FROM payments p
                WHERE p.restaurant_id = $1
                  AND p.status = 'REFUNDED'
-                 AND ${localDay('p.created_at')} = date_series
+                 AND DATE(p.created_at) = date_series
              ), 0) AS revenue
        FROM generate_series(
-         ${todayLocal} - ($2 - 1) * INTERVAL '1 day',
-         ${todayLocal},
+         CURRENT_DATE - ($2 - 1) * INTERVAL '1 day',
+         CURRENT_DATE,
          '1 day'
        ) AS date_series
        LEFT JOIN orders o
-         ON ${localDay('o.created_at')} = date_series
+         ON DATE(o.created_at) = date_series
          AND o.restaurant_id = $1
          AND o.status = 'COMPLETED'
        GROUP BY date_series
