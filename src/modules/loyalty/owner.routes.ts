@@ -12,7 +12,7 @@
 
 import { Router, Response, NextFunction } from 'express';
 import { z } from 'zod';
-import { withTenant } from '@/config/database';
+import { withTenant, query } from '@/config/database';
 import { successResponse } from '@/shared/utils/responseHandler';
 import { NotFoundError } from '@/shared/errors/AppError';
 import { authenticate, AuthenticatedRequest } from '@/shared/middleware/authenticate';
@@ -23,18 +23,39 @@ export const ownerReviewsRouter = Router();
 
 ownerReviewsRouter.get('/', authenticate, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
+    // 1) Reviews + order number come from restaurant-scoped tables, so row-level
+    //    security limits them to this restaurant.
     const rows = await withTenant(req.user!.restaurantId, async (q) => {
       const r = await q(
         `SELECT rv.id, rv.rating, rv.title, rv.body, rv.is_published, rv.created_at,
-                c.name AS customer_name, o.order_number
+                rv.customer_id, o.order_number
          FROM reviews rv
-         LEFT JOIN customers c ON c.id = rv.customer_id
          LEFT JOIN orders o ON o.id = rv.order_id
          ORDER BY rv.created_at DESC LIMIT 200`,
       );
       return r.rows;
     });
-    res.json(successResponse(rows));
+
+    // 2) Reviewer names. `customers` is a GLOBAL table (one person can order from
+    //    many restaurants) that the restricted tenant role is deliberately not
+    //    allowed to read, otherwise a restaurant could see every customer's phone
+    //    and email. So look up only the names of people who reviewed THIS
+    //    restaurant, using the privileged connection.
+    const customerIds = [...new Set(rows.map((r: { customer_id: string | null }) => r.customer_id).filter(Boolean))];
+    const names = new Map<string, string | null>();
+    if (customerIds.length > 0) {
+      const found = await query(`SELECT id, name FROM customers WHERE id = ANY($1::uuid[])`, [customerIds]);
+      for (const c of found.rows) names.set(c.id, c.name);
+    }
+
+    res.json(
+      successResponse(
+        rows.map(({ customer_id, ...review }: { customer_id: string | null; [k: string]: unknown }) => ({
+          ...review,
+          customer_name: customer_id ? names.get(customer_id) ?? null : null,
+        })),
+      ),
+    );
   } catch (err) { next(err); }
 });
 
