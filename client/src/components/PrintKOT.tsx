@@ -78,16 +78,17 @@ export function printKOT(order: Order, items: OrderItem[], restaurantName = 'Kit
           font-size: 13px;
           color: #000;
           background: #fff;
-          padding: 8px;
-          width: 80mm;
+          padding: 2mm 1mm;
+          width: 72mm;
+          max-width: 100%;
         }
         .center { text-align: center; }
         .divider { border-top: 1px dashed #000; margin: 6px 0; }
         .order-num { font-size: 28px; font-weight: bold; letter-spacing: 2px; }
         table { width: 100%; border-collapse: collapse; }
         @media print {
-          @page { size: 80mm auto; margin: 4mm; }
-          body { padding: 0; }
+          @page { size: 80mm auto; margin: 0; }
+          body { padding: 0 1mm; }
         }
       </style>
     </head>
