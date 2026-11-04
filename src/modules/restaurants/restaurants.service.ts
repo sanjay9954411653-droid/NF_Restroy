@@ -105,31 +105,14 @@ export class RestaurantsService {
     const { name, auto_approve_online_orders, delay_threshold_minutes } = payload;
 
     // Verify restaurant exists
-    const existing = await this.getRestaurant(restaurantId);
+    await this.getRestaurant(restaurantId);
 
     const updates: any = {};
 
     if (name !== undefined) {
-      updates.name = name;
-
-      // If name is changing, generate new slug
-      const newSlug = this.generateSlug(name);
-      if (newSlug !== existing.slug) {
-        let slug = newSlug;
-        let counter = 1;
-        let originalSlug = slug;
-
-        while (await restaurantsRepository.slugExists(slug, restaurantId)) {
-          slug = `${originalSlug}-${counter}`;
-          counter++;
-          if (counter > 100) {
-            throw new ConflictError('Unable to generate unique slug for updated restaurant name');
-          }
-        }
-
-        await this.validateSlug(slug, restaurantId);
-        updates.slug = slug;
-      }
+      // The slug is deliberately NOT regenerated on rename: it is embedded in printed
+      // table QR codes and public links (/customer?slug=...), so changing it would break them.
+      updates.name = name.trim();
     }
 
     if (auto_approve_online_orders !== undefined) {
