@@ -85,7 +85,6 @@ interface SelectedModifier {
   option_name: string
   price_adjustment: number
 }
-
 interface CartLine {
   cart_key: string         // composite key for unique cart identity
   id: string               // menu_item_id
@@ -309,7 +308,7 @@ const CustomerApp: React.FC = () => {
         setTableId(t.id)
         setTableNumber(t.table_number)
         setTableLocked(true)
-        setStep('pin')
+        setStep(t.passcode_required === false ? 'menu' : 'pin')
       })
       .catch((err) => {
         setError(err.response?.data?.error?.message || 'This QR code is invalid or the table is no longer active')
