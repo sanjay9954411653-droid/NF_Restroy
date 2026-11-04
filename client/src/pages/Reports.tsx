@@ -11,6 +11,7 @@ import Loading from '../components/Loading'
 import Badge from '../components/Badge'
 import PaymentModeReport from '../components/PaymentModeReport'
 import TopItemsReport from '../components/TopItemsReport'
+import ExportButtons from '../components/ExportButtons'
 import {
   CurrencyDollarIcon,
   ClipboardDocumentListIcon,
@@ -140,7 +141,23 @@ const Reports: React.FC = () => {
             <h2 className="font-semibold text-gray-900">Revenue Trend</h2>
             <p className="text-xs text-gray-400 mt-0.5">Daily revenue breakdown</p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <ExportButtons
+              title="Revenue trend"
+              subtitle={`Last ${revenueDays} days`}
+              filename="revenue-trend"
+              disabled={revenue.length === 0}
+              getTables={() => [
+                {
+                  name: 'Daily revenue',
+                  note: `Last ${revenueDays} days`,
+                  headers: ['Date', 'Revenue'],
+                  rows: revenue.map((r) => [r.date, Number(r.revenue) || 0]),
+                  totals: ['Total', revenue.reduce((s, r) => s + (Number(r.revenue) || 0), 0)],
+                  money: [1],
+                },
+              ]}
+            />
             {[7, 14, 30].map((d) => (
               <button
                 key={d}
