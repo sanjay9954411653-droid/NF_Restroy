@@ -245,6 +245,64 @@ export function setBillPaperWidth(w: PaperWidth): void {
 
 const money = (n: number) => Number(n).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
+async function logoToPrinterBytes(url: string, maxWidth = 384): Promise<number[]> {
+  const img = new Image()
+  img.crossOrigin = 'anonymous'
+
+  await new Promise<void>((resolve, reject) => {
+    img.onload = () => resolve()
+    img.onerror = () => reject(new Error('Could not load restaurant logo'))
+    img.src = url
+  })
+
+  const scale = Math.min(1, maxWidth / img.width)
+  const width = Math.max(1, Math.floor(img.width * scale))
+  const height = Math.max(1, Math.floor(img.height * scale))
+
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+
+  const ctx = canvas.getContext('2d')
+  if (!ctx) throw new Error('Could not process logo')
+
+  ctx.fillStyle = '#fff'
+  ctx.fillRect(0, 0, width, height)
+  ctx.drawImage(img, 0, 0, width, height)
+
+  const pixels = ctx.getImageData(0, 0, width, height).data
+  const rowBytes = Math.ceil(width / 8)
+  const raster: number[] = []
+
+  for (let y = 0; y < height; y++) {
+    for (let bx = 0; bx < rowBytes; bx++) {
+      let value = 0
+      for (let bit = 0; bit < 8; bit++) {
+        const x = bx * 8 + bit
+        if (x < width) {
+          const i = (y * width + x) * 4
+          const gray = (
+            pixels[i] * 0.299 +
+            pixels[i + 1] * 0.587 +
+            pixels[i + 2] * 0.114
+          )
+          if (gray < 160) value |= 0x80 >> bit
+        }
+      }
+      raster.push(value)
+    }
+  }
+
+  return [
+    0x1d, 0x76, 0x30, 0,
+    rowBytes & 0xff, (rowBytes >> 8) & 0xff,
+    height & 0xff, (height >> 8) & 0xff,
+    ...raster,
+    0x0a,
+  ]
+}
+
+
 /** Builds the raw ESC/POS bytes for a bill. `cols` = characters per line (32 for 58 mm, 42 for 80 mm). */
 export function buildBillBytes(data: BillData, cols: number = getBillPaperWidth() === 80 ? 42 : 32): Uint8Array {
   const { order, items, restaurant, tableNumber, coupon } = data
@@ -260,7 +318,7 @@ export function buildBillBytes(data: BillData, cols: number = getBillPaperWidth(
 
   const wrap = (text: string, width: number): string[] => {
     const t = ascii(text).replace(/\s+/g, ' ').trim()
-    const lines: string[] = []
+    const lines: string[] = [] 
     let cur = ''
     for (const word of t.split(' ')) {
       if (word.length > width) {
