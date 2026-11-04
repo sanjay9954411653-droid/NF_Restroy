@@ -6,6 +6,8 @@
  * step), and the passcode (printed alongside the QR) must be entered before
  * they can place an order — so a random person can't order to a table they
  * aren't actually sitting at.
+ *
+ * The PIN requirement can be switched on/off with the toggle at the top.
  */
 
 import { useEffect, useState } from 'react'
@@ -42,6 +44,8 @@ const TableQRCodes: React.FC = () => {
   const [loading, setLoading] = useState(true)
   const [revealed, setRevealed] = useState<Record<string, boolean>>({})
   const [regenerating, setRegenerating] = useState<Record<string, boolean>>({})
+  const [passcodeRequired, setPasscodeRequired] = useState(true)
+  const [savingSetting, setSavingSetting] = useState(false)
 
   const baseUrl = window.location.origin
 
@@ -57,6 +61,11 @@ const TableQRCodes: React.FC = () => {
       })
       .catch((err) => toast.error(getErrorMessage(err)))
       .finally(() => setLoading(false))
+
+    // Loaded separately so the page still works if this fails
+    api.get<{ success: boolean; data: { required: boolean } }>('/tables/passcode-setting')
+      .then((res) => setPasscodeRequired(res.data.data.required !== false))
+      .catch(() => {})
   }
 
   useEffect(() => { load() }, [])
@@ -75,6 +84,25 @@ const TableQRCodes: React.FC = () => {
       toast.error(getErrorMessage(err))
     } finally {
       setRegenerating((prev) => ({ ...prev, [id]: false }))
+    }
+  }
+
+  const togglePasscode = async () => {
+    const next = !passcodeRequired
+    if (!next && !window.confirm(
+      'Turn off the PIN?\n\nAnyone who scans a table QR code (or has its link) will be able to place orders for that table without a PIN.',
+    )) {
+      return
+    }
+    setSavingSetting(true)
+    try {
+      await api.put('/tables/passcode-setting', { required: next })
+      setPasscodeRequired(next)
+      toast.success(next ? 'PIN is now required to order' : 'PIN turned off — customers can order straight after scanning')
+    } catch (err) {
+      toast.error(getErrorMessage(err))
+    } finally {
+      setSavingSetting(false)
     }
   }
 
@@ -100,8 +128,7 @@ const TableQRCodes: React.FC = () => {
           <h1>Table ${table.table_number}</h1>
           <p>Scan to order</p>
           <img src="https://api.qrserver.com/v1/create-qr-code/?size=360x360&data=${encodeURIComponent(url)}&margin=20&color=1f2937&bgcolor=ffffff" width="360" height="360" />
-          <div class="pin-label">PIN</div>
-          <div class="pin">${table.passcode}</div>
+          ${passcodeRequired ? `<div class="pin-label">PIN</div><div class="pin">${table.passcode}</div>` : ''}
         </div>
       </body>
       </html>
@@ -122,10 +149,41 @@ const TableQRCodes: React.FC = () => {
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Table QR Codes</h1>
         <p className="text-sm text-gray-500 mt-0.5">
-          Each table has its own QR code and PIN. Print one per table — scanning it takes the customer
-          straight to that table, and they'll need the PIN to place an order.
+          {passcodeRequired
+            ? "Each table has its own QR code and PIN. Print one per table — scanning it takes the customer straight to that table, and they'll need the PIN to place an order."
+            : 'Each table has its own QR code. Print one per table — scanning it takes the customer straight to that table and they can order right away.'}
         </p>
       </div>
+
+      <Card>
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <h2 className="text-sm font-semibold text-gray-900">Require PIN to order</h2>
+            <p className="text-xs text-gray-500 mt-0.5">
+              {passcodeRequired
+                ? 'On — customers must enter the PIN printed on their table before they can order.'
+                : 'Off — customers can order straight after scanning, no PIN needed.'}
+            </p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={passcodeRequired}
+            aria-label="Require PIN to order"
+            disabled={savingSetting}
+            onClick={togglePasscode}
+            className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors focus:outline-none disabled:opacity-60 ${
+              passcodeRequired ? 'bg-brand-600' : 'bg-gray-300'
+            }`}
+          >
+            <span
+              className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+                passcodeRequired ? 'translate-x-5' : 'translate-x-0.5'
+              }`}
+            />
+          </button>
+        </div>
+      </Card>
 
       {tables.length === 0 ? (
         <Card>
@@ -147,6 +205,7 @@ const TableQRCodes: React.FC = () => {
                 <div className="flex justify-center mb-3">
                   <QRImage url={url} />
                 </div>
+                {passcodeRequired && (
                 <div className="flex items-center justify-center gap-2 mb-4">
                   <span className="text-xs text-gray-400 uppercase tracking-wide">PIN:</span>
                   <span className="font-mono font-bold text-lg text-gray-900 tracking-widest">
@@ -160,6 +219,7 @@ const TableQRCodes: React.FC = () => {
                     {isRevealed ? <EyeSlashIcon className="w-4 h-4" /> : <EyeIcon className="w-4 h-4" />}
                   </button>
                 </div>
+                )}
                 <div className="flex gap-2">
                   <Button variant="secondary" size="sm" className="flex-1" onClick={() => printTable(table)}>
                     <PrinterIcon className="w-4 h-4 mr-1" />
