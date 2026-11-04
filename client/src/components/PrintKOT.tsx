@@ -20,6 +20,7 @@ import { Order, OrderItem } from '../types/order'
 import { formatWeight } from '../lib/weight'
 import { printKOTRaw } from '../lib/thermalPrinter'
 import toast from 'react-hot-toast'
+import PrinterConnect from './PrinterConnect'
 
 interface PrintKOTProps {
   order: Order
@@ -107,6 +108,11 @@ const PrintKOT: React.FC<PrintKOTProps> = ({ order, items, restaurantName = 'Kit
           )}
           <div className="border-t border-dashed border-gray-300 my-2" />
           <p className="text-center text-gray-400 text-xs">{new Date().toLocaleTimeString('en-IN')}</p>
+        </div>
+
+        {/* Shared printer connection controls (same connection used by Bill Print) */}
+        <div className="px-4 py-3 border-b border-gray-100">
+          <PrinterConnect />
         </div>
 
         {/* Actions */}
