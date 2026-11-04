@@ -48,6 +48,7 @@ interface Theme {
 const FONT_OPTIONS = ['Inter', 'Poppins', 'Roboto', 'Lato', 'Montserrat', 'Playfair Display']
 
 const emptyProfileFields = {
+  name: '',
   logo_url: '',
   hero_image_url: '',
   tagline: '',
@@ -87,6 +88,7 @@ const Branding: React.FC = () => {
       .then(([profileRes, themeRes]) => {
         const p = profileRes.data.data
         setFields({
+          name: p.name || '',
           logo_url: p.logo_url || '',
           hero_image_url: p.hero_image_url || '',
           tagline: p.tagline || '',
@@ -117,9 +119,15 @@ const Branding: React.FC = () => {
   }
 
   const saveProfile = async () => {
+    const name = fields.name.trim()
+    if (name.length < 2) {
+      toast.error('Restaurant name must be at least 2 characters')
+      return
+    }
     setSavingProfile(true)
     try {
       await api.put('/restaurants/me', {
+        name,
         logo_url: fields.logo_url || null,
         hero_image_url: fields.hero_image_url || null,
         tagline: fields.tagline || null,
@@ -209,6 +217,20 @@ const Branding: React.FC = () => {
           <h2 className="text-sm font-semibold text-slate-700">Business Info</h2>
         </div>
         <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Restaurant Name</label>
+            <input
+              type="text"
+              value={fields.name}
+              maxLength={255}
+              onChange={(e) => updateField('name', e.target.value)}
+              placeholder="e.g. Veg & Velvet"
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+            />
+            <p className="text-xs text-slate-400 mt-1">
+              Shown on the customer menu and website. Your menu link and table QR codes keep working.
+            </p>
+          </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Tagline</label>
             <input
