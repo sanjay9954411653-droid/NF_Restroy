@@ -13,6 +13,7 @@ import Orders from './pages/Orders'
 import Tables from './pages/Tables'
 import Menu from './pages/Menu'
 import Reports from './pages/Reports'
+import TopItems from './pages/TopItems'
 import Payments from './pages/Payments'
 import OrderDetails from './pages/OrderDetails'
 import Kitchen from './pages/Kitchen'
@@ -130,6 +131,13 @@ function App() {
                 <ProtectedRoute roles={['ADMIN']}>
                   <Layout>
                     <Users />
+                  </Layout>
+                </ProtectedRoute>
+              } />
+              <Route path="/reports/top-items" element={
+                <ProtectedRoute roles={['ADMIN']}>
+                  <Layout>
+                    <TopItems />
                   </Layout>
                 </ProtectedRoute>
               } />
