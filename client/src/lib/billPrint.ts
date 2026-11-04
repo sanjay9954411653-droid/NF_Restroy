@@ -120,7 +120,7 @@ export async function loadBillData(orderId: string, tableNumber?: string): Promi
 
 const CSS = `
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#000;background:#fff;width:80mm;margin:0 auto;padding:6px 8px}
+body{font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#000;background:#fff;width:72mm;max-width:100%;margin:0 auto;padding:2mm 1mm}
 .c{text-align:center}
 .row{display:flex;justify-content:space-between;gap:8px;padding:2px 0}
 .row span:first-child{flex:1}
@@ -136,8 +136,8 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#000;background
 .total{font-size:15px;font-weight:700;border-top:1px solid #000;margin-top:5px;padding-top:5px}
 .qr{width:92px;height:92px;display:block;margin:4px auto}
 .foot{font-size:11px;margin-top:2px}
-@page{size:80mm auto;margin:3mm}
-@media print{body{padding:0}}
+@page{size:80mm auto;margin:0}
+@media print{body{padding:0 1mm}}
 `
 
 export function buildBillBody(data: BillData): string {
