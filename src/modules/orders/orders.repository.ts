@@ -621,7 +621,8 @@ export class OrdersRepository {
           WHERE o.status NOT IN ('COMPLETED', 'CANCELLED')
           AND NOW() > o.created_at + (r.delay_threshold_minutes || ' minutes')::interval
         ) as delayed_orders_count,
-        COALESCE(SUM(o.total_amount) FILTER (WHERE ${isToday('o.created_at')}), 0) as revenue_today
+        (SELECT COALESCE(SUM(p.amount), 0) FROM payments p
+          WHERE p.restaurant_id = $1 AND p.status = 'PAID' AND ${isToday('p.created_at')}) as revenue_today
        FROM orders o
        JOIN restaurants r ON o.restaurant_id = r.id
        WHERE o.restaurant_id = $1`,
