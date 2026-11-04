@@ -3,6 +3,8 @@ import toast from 'react-hot-toast'
 import api, { getErrorMessage } from '../api'
 import { formatCurrency } from '../lib/utils'
 import Card from './Card'
+import ExportButtons from './ExportButtons'
+import { ReportTable } from '../lib/exportReport'
 
 interface ModeRow {
   method: 'CASH' | 'UPI' | 'CARD' | 'ONLINE'
@@ -13,6 +15,8 @@ interface ModeRow {
 }
 
 interface ModeReport {
+  from: string
+  to: string
   modes: ModeRow[]
   total_paid: number
   total_paid_count: number
@@ -88,6 +92,28 @@ const PaymentModeReport: React.FC = () => {
 
   const total = report?.total_paid || 0
 
+  const periodText = report ? (report.from === report.to ? report.from : `${report.from} to ${report.to}`) : ''
+  const buildTables = (): ReportTable[] => {
+    if (!report) return []
+    return [
+      {
+        name: 'Collections by payment mode',
+        note: `Period: ${periodText} · only paid payments are counted as received`,
+        headers: ['Mode', 'Paid payments', 'Total received', 'Share %', 'Refunded', 'Pending'],
+        rows: report.modes.map((m) => [
+          MODE_META[m.method].label,
+          m.paid_count,
+          m.paid_amount,
+          total > 0 ? Math.round((m.paid_amount / total) * 1000) / 10 : 0,
+          m.refunded_amount,
+          m.pending_amount,
+        ]),
+        totals: ['Total', report.total_paid_count, report.total_paid, total > 0 ? 100 : 0, report.total_refunded, report.total_pending],
+        money: [2, 4, 5],
+      },
+    ]
+  }
+
   return (
     <Card>
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-5">
@@ -95,7 +121,14 @@ const PaymentModeReport: React.FC = () => {
           <h2 className="font-semibold text-gray-900">Collections by payment mode</h2>
           <p className="text-xs text-gray-400 mt-0.5">Money received (paid payments) in the selected period</p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <ExportButtons
+            title="Collections by payment mode"
+            subtitle={`Period: ${periodText}`}
+            filename="collections-by-payment-mode"
+            getTables={buildTables}
+            disabled={!report || loading}
+          />
           {RANGES.map((r) => (
             <button
               key={r.key}

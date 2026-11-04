@@ -8,6 +8,8 @@ import { formatCurrency } from '../lib/utils'
 import { formatWeight } from '../lib/weight'
 import { RangeKey, rangeDates, ymd } from '../lib/dateRange'
 import Card from './Card'
+import ExportButtons from './ExportButtons'
+import { ReportTable } from '../lib/exportReport'
 
 interface TopItem {
   menu_item_id: string
@@ -37,11 +39,13 @@ const TopItemsReport: React.FC = () => {
   const [customFrom, setCustomFrom] = useState(ymd(new Date()))
   const [customTo, setCustomTo] = useState(ymd(new Date()))
   const [items, setItems] = useState<TopItem[]>([])
+  const [periodText, setPeriodText] = useState('All time')
   const [loading, setLoading] = useState(true)
   const latest = useRef(0)
 
   const load = useCallback(async () => {
     const params: Record<string, string | number> = { limit: 10, sort }
+    let label = 'All time'
     if (range !== 'all') {
       const { from, to } = range === 'custom' ? { from: customFrom, to: customTo } : rangeDates(range)
       if (!from || !to) return
@@ -51,6 +55,7 @@ const TopItemsReport: React.FC = () => {
       }
       params.from = from
       params.to = to
+      label = from === to ? from : `${from} to ${to}`
       params.tz = Intl.DateTimeFormat().resolvedOptions().timeZone
       params.offset = -new Date().getTimezoneOffset()
     }
@@ -58,7 +63,10 @@ const TopItemsReport: React.FC = () => {
     setLoading(true)
     try {
       const res = await api.get('/reports/top-items', { params })
-      if (ticket === latest.current) setItems(res.data.data || [])
+      if (ticket === latest.current) {
+        setItems(res.data.data || [])
+        setPeriodText(label)
+      }
     } catch (err) {
       if (ticket === latest.current) toast.error(getErrorMessage(err))
     } finally {
@@ -75,6 +83,23 @@ const TopItemsReport: React.FC = () => {
   const totalSold = items.reduce((s, i) => s + i.total_quantity, 0)
   const totalRevenue = items.reduce((s, i) => s + i.total_revenue, 0)
 
+  const buildTables = (): ReportTable[] => [
+    {
+      name: 'Top selling items',
+      note: `Period: ${periodText} · ranked by ${sort === 'revenue' ? 'revenue' : 'quantity'} · cancelled orders not counted`,
+      headers: ['#', 'Item', 'Quantity sold', 'Weight sold', 'Revenue'],
+      rows: items.map((it, i) => [
+        i + 1,
+        it.name,
+        it.total_quantity,
+        it.total_weight_grams > 0 ? formatWeight(it.total_weight_grams) : '',
+        it.total_revenue,
+      ]),
+      totals: ['', `Top ${items.length} items`, totalSold, '', totalRevenue],
+      money: [4],
+    },
+  ]
+
   return (
     <Card>
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-5">
@@ -84,7 +109,15 @@ const TopItemsReport: React.FC = () => {
             Best sellers in the selected period (cancelled orders are not counted)
           </p>
         </div>
-        <div className="flex rounded-lg bg-gray-100 p-0.5 self-start lg:self-auto">
+        <div className="flex flex-wrap items-center gap-3 self-start lg:self-auto">
+        <ExportButtons
+          title="Top selling items"
+          subtitle={`Period: ${periodText}`}
+          filename="top-selling-items"
+          getTables={buildTables}
+          disabled={items.length === 0 || loading}
+        />
+        <div className="flex rounded-lg bg-gray-100 p-0.5">
           {([['quantity', 'By quantity'], ['revenue', 'By revenue']] as [SortKey, string][]).map(([k, label]) => (
             <button
               key={k}
@@ -96,6 +129,7 @@ const TopItemsReport: React.FC = () => {
               {label}
             </button>
           ))}
+        </div>
         </div>
       </div>
 
