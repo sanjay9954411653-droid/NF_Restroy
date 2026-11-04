@@ -96,6 +96,7 @@ export class ReportsRepository {
     restaurantId: string,
     limit: number,
     range?: { from: string; to: string; zoneCandidates: string[]; offsetMinutes: number },
+    sort: 'quantity' | 'revenue' = 'quantity',
   ): Promise<TopSellingItem[]> {
     let dateFilter = '';
     const params: unknown[] = [restaurantId, limit];
@@ -113,12 +114,19 @@ export class ReportsRepository {
       params.push(range.from, range.to, zone ?? range.offsetMinutes);
     }
 
+    // Fixed strings only (never user input), so safe to put in the SQL
+    const orderBy =
+      sort === 'revenue'
+        ? 'total_revenue DESC, total_quantity DESC'
+        : 'total_quantity DESC, total_revenue DESC';
+
     const result = await query(
       `SELECT
          oi.menu_item_id,
          mi.name,
          SUM(oi.quantity) AS total_quantity,
-         COALESCE(SUM(oi.quantity * oi.unit_price), 0) AS total_revenue
+         COALESCE(SUM(oi.quantity * oi.unit_price), 0) AS total_revenue,
+         COALESCE(SUM(oi.weight_grams), 0) AS total_weight_grams
        FROM order_items oi
        JOIN orders o ON oi.order_id = o.id
        JOIN menu_items mi ON oi.menu_item_id = mi.id
@@ -126,7 +134,7 @@ export class ReportsRepository {
          AND o.status <> 'CANCELLED'
          ${dateFilter}
        GROUP BY oi.menu_item_id, mi.name
-       ORDER BY total_quantity DESC, total_revenue DESC
+       ORDER BY ${orderBy}
        LIMIT $2`,
       params,
     );
@@ -137,6 +145,7 @@ export class ReportsRepository {
       total_quantity: parseInt(row.total_quantity, 10) || 0,
 
       total_revenue: parseFloat(row.total_revenue) || 0,
+      total_weight_grams: parseInt(row.total_weight_grams, 10) || 0,
     }));
   }
 

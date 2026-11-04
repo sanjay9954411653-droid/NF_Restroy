@@ -7,6 +7,8 @@ const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD');
 export const TopItemsQuerySchema = z
   .object({
     limit: z.preprocess((value) => Number(value), z.number().int().min(1).max(50).default(10)),
+    // Rank by units sold (default) or by money made
+    sort: z.enum(['quantity', 'revenue']).default('quantity'),
     from: isoDate.optional(),
     to: isoDate.optional(),
     tz: z.string().max(64).optional(),
@@ -61,6 +63,8 @@ export interface TopSellingItem {
   name: string;
   total_quantity: number;
   total_revenue: number;
+  /** Total weight sold, in grams, for items sold by kg / 100 g (0 for normal items) */
+  total_weight_grams: number;
 }
 
 export interface PaymentModeRow {

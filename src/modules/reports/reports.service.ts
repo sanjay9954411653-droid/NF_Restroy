@@ -11,8 +11,9 @@ export class ReportsService {
     restaurantId: string,
     limit: number,
     range?: { from: string; to: string; tz?: string; offset?: number },
+    sort: 'quantity' | 'revenue' = 'quantity',
   ): Promise<TopSellingItem[]> {
-    if (!range) return reportsRepository.getTopSellingItems(restaurantId, limit);
+    if (!range) return reportsRepository.getTopSellingItems(restaurantId, limit, undefined, sort);
 
     // Same timezone handling as the payment-modes report
     const LEGACY_ZONES: Record<string, string> = {
@@ -32,12 +33,17 @@ export class ReportsService {
     const days = (Date.parse(range.to) - Date.parse(range.from)) / 86_400_000 + 1;
     if (days > 366) throw new BadRequestError('Date range can be at most one year');
 
-    return reportsRepository.getTopSellingItems(restaurantId, limit, {
-      from: range.from,
-      to: range.to,
-      zoneCandidates,
-      offsetMinutes: range.offset ?? 330,
-    });
+    return reportsRepository.getTopSellingItems(
+      restaurantId,
+      limit,
+      {
+        from: range.from,
+        to: range.to,
+        zoneCandidates,
+        offsetMinutes: range.offset ?? 330,
+      },
+      sort,
+    );
   }
 
   async getDailyRevenue(restaurantId: string, days: number): Promise<DailyRevenuePoint[]> {
