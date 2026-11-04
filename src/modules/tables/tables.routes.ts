@@ -1,8 +1,11 @@
-import { Router } from 'express';
+import { Router, Response, NextFunction } from 'express';
+import { z } from 'zod';
+import { query } from '@/config/database';
 import { tablesController } from './tables.controller';
-import { authenticate } from '@/shared/middleware/authenticate';
+import { authenticate, AuthenticatedRequest } from '@/shared/middleware/authenticate';
 import { authorize } from '@/shared/middleware/authorize';
 import { checkSubscription } from '@/shared/middleware/checkSubscription';
+import { successResponse } from '@/shared/utils/responseHandler';
 
 const router = Router();
 
@@ -19,6 +22,38 @@ router.get('/with-status', authenticate, (req, res, next) => tablesController.ge
 
 // Get table statistics (Admin only)
 router.get('/stats', authenticate, authorize('ADMIN'), (req, res, next) => tablesController.getStats(req, res, next));
+
+// ── "Require PIN to order" on/off switch (Admin only) ───────────────────────
+// NOTE: declared before '/:id' so 'passcode-setting' isn't treated as an id.
+router.get('/passcode-setting', authenticate, authorize('ADMIN'), async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  try {
+    const restaurantId = req.user?.restaurantId;
+    if (!restaurantId) throw new Error('User not associated with a restaurant');
+
+    const result = await query('SELECT table_passcode_required FROM restaurants WHERE id = $1', [restaurantId]);
+    res.status(200).json(successResponse({ required: result.rows[0]?.table_passcode_required !== false }));
+  } catch (error) {
+    next(error);
+  }
+});
+
+const PasscodeSettingSchema = z.object({ required: z.boolean() });
+
+router.put('/passcode-setting', authenticate, authorize('ADMIN'), checkSubscription, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  try {
+    const restaurantId = req.user?.restaurantId;
+    if (!restaurantId) throw new Error('User not associated with a restaurant');
+
+    const { required } = PasscodeSettingSchema.parse(req.body);
+    await query(
+      'UPDATE restaurants SET table_passcode_required = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+      [required, restaurantId],
+    );
+    res.status(200).json(successResponse({ required }, { message: required ? 'PIN is now required' : 'PIN is now turned off' }));
+  } catch (error) {
+    next(error);
+  }
+});
 
 // Get specific table by ID
 router.get('/:id', authenticate, (req, res, next) => tablesController.getById(req, res, next));
