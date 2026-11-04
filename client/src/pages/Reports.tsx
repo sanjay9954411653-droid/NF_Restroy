@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell, Legend,
+  ResponsiveContainer,
 } from 'recharts'
 import api, { getErrorMessage } from '../api'
 import { formatCurrency } from '../lib/utils'
@@ -10,6 +10,7 @@ import Card from '../components/Card'
 import Loading from '../components/Loading'
 import Badge from '../components/Badge'
 import PaymentModeReport from '../components/PaymentModeReport'
+import TopItemsReport from '../components/TopItemsReport'
 import {
   CurrencyDollarIcon,
   ClipboardDocumentListIcon,
@@ -26,7 +27,6 @@ interface DashboardData {
   low_stock_items: number
 }
 
-interface TopItem { name: string; total_quantity: number; total_revenue: number }
 interface RevenuePoint { date: string; revenue: number }
 interface InventoryAlert {
   inventory_item_id: string
@@ -34,8 +34,6 @@ interface InventoryAlert {
   current_stock: number
   reorder_level: number
 }
-
-const COLORS = ['#6366f1', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981']
 
 const CustomTooltip = ({ active, payload, label }: any) => {
   if (!active || !payload?.length) return null
@@ -49,7 +47,6 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 
 const Reports: React.FC = () => {
   const [dashboard, setDashboard] = useState<DashboardData | null>(null)
-  const [topItems, setTopItems] = useState<TopItem[]>([])
   const [revenue, setRevenue] = useState<RevenuePoint[]>([])
   const [alerts, setAlerts] = useState<InventoryAlert[]>([])
   const [loading, setLoading] = useState(true)
@@ -57,14 +54,12 @@ const Reports: React.FC = () => {
 
   const fetchAll = async (days = revenueDays) => {
     try {
-      const [dashRes, topRes, revRes, alertRes] = await Promise.all([
+      const [dashRes, revRes, alertRes] = await Promise.all([
         api.get('/reports/dashboard'),
-        api.get('/reports/top-items', { params: { limit: 10 } }),
         api.get('/reports/daily-revenue', { params: { days } }),
         api.get('/reports/inventory-alerts'),
       ])
       setDashboard(dashRes.data.data)
-      setTopItems(topRes.data.data || [])
       setRevenue(revRes.data.data || [])
       setAlerts(alertRes.data.data || [])
     } catch (err) {
@@ -87,11 +82,6 @@ const Reports: React.FC = () => {
     dashboard && dashboard.completed_orders_today > 0
       ? dashboard.revenue_today / dashboard.completed_orders_today
       : 0
-
-  const pieData = topItems.slice(0, 5).map((item) => ({
-    name: item.name,
-    value: item.total_quantity,
-  }))
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -205,83 +195,8 @@ const Reports: React.FC = () => {
         </ResponsiveContainer>
       </Card>
 
-      {/* Top items + Pie */}
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-        {/* Bar chart */}
-        <Card>
-          <h2 className="font-semibold text-gray-900 mb-6">Top Selling Items</h2>
-          {topItems.length > 0 ? (
-            <ResponsiveContainer width="100%" height={260}>
-              <BarChart
-                data={topItems.slice(0, 8)}
-                layout="vertical"
-                margin={{ top: 0, right: 20, left: 0, bottom: 0 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" horizontal={false} />
-                <XAxis type="number" tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
-                <YAxis
-                  type="category"
-                  dataKey="name"
-                  tick={{ fontSize: 11, fill: '#374151' }}
-                  axisLine={false}
-                  tickLine={false}
-                  width={100}
-                />
-                <Tooltip
-                  formatter={(v: any) => [`${v} sold`, 'Quantity']}
-                  contentStyle={{ borderRadius: 8, border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.15)' }}
-                />
-                <Bar dataKey="total_quantity" radius={[0, 4, 4, 0]}>
-                  {topItems.slice(0, 8).map((_, i) => (
-                    <Cell key={i} fill={COLORS[i % COLORS.length]} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          ) : (
-            <div className="h-[260px] flex items-center justify-center text-gray-400 text-sm">
-              No sales data yet
-            </div>
-          )}
-        </Card>
-
-        {/* Pie chart */}
-        <Card>
-          <h2 className="font-semibold text-gray-900 mb-6">Sales Distribution</h2>
-          {pieData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={260}>
-              <PieChart>
-                <Pie
-                  data={pieData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={60}
-                  outerRadius={100}
-                  paddingAngle={3}
-                  dataKey="value"
-                >
-                  {pieData.map((_, i) => (
-                    <Cell key={i} fill={COLORS[i % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip
-                  formatter={(v: any) => [`${v} sold`, '']}
-                  contentStyle={{ borderRadius: 8, border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.15)' }}
-                />
-                <Legend
-                  iconType="circle"
-                  iconSize={8}
-                  formatter={(v) => <span className="text-xs text-gray-600">{v}</span>}
-                />
-              </PieChart>
-            </ResponsiveContainer>
-          ) : (
-            <div className="h-[260px] flex items-center justify-center text-gray-400 text-sm">
-              No data yet
-            </div>
-          )}
-        </Card>
-      </div>
+      {/* Top selling items — filter by period, rank by quantity or revenue */}
+      <TopItemsReport />
 
       {/* Inventory alerts */}
       {alerts.length > 0 && (
