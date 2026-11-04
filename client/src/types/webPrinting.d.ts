@@ -13,11 +13,12 @@ interface USBDevice {
   close(): Promise<void>
   selectConfiguration(configurationValue: number): Promise<void>
   claimInterface(interfaceNumber: number): Promise<void>
+  releaseInterface(interfaceNumber: number): Promise<void>
   transferOut(endpointNumber: number, data: BufferSource): Promise<{ status: string; bytesWritten: number }>
 }
 interface USBInterface {
   interfaceNumber: number
-  alternate: { endpoints: USBEndpoint[] }
+  alternate: { interfaceClass?: number; endpoints: USBEndpoint[] }
 }
 interface USBEndpoint {
   endpointNumber: number
