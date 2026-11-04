@@ -32,12 +32,17 @@ self.addEventListener('push', (event) => {
 // otherwise opens a new one straight to the tables screen.
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
+  // Alerts can carry a target screen (e.g. '/kitchen', '/orders'); default to home.
+  const target = (event.notification.data && event.notification.data.url) || '/';
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
       for (const client of clients) {
-        if ('focus' in client) return client.focus();
+        if ('focus' in client) {
+          if ('navigate' in client && target !== '/') client.navigate(target).catch(() => {});
+          return client.focus();
+        }
       }
-      if (self.clients.openWindow) return self.clients.openWindow('/');
+      if (self.clients.openWindow) return self.clients.openWindow(target);
     }),
   );
 });
