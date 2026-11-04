@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { Navigate } from 'react-router-dom'
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -40,6 +40,10 @@ interface DashboardData {
 
 interface RevenuePoint { date: string; revenue: number }
 interface TopItem { name: string; total_quantity: number; total_revenue: number }
+
+/** The owner's own calendar date as YYYY-MM-DD (not the server's / UTC's). */
+const localDate = (d = new Date()) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 
 const StatCard = ({
   label, value, icon: Icon, color, sub,
@@ -97,14 +101,20 @@ const Dashboard: React.FC = () => {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const { on, off } = useSocket()
+  const loadedDay = useRef(localDate()) // the day the Top Items list was last loaded for
 
   const fetchAll = useCallback(async () => {
     try {
       setError('')
+      // Top Items is for TODAY only, so the list starts fresh every day (at the owner's midnight)
+      const today = localDate()
+      loadedDay.current = today
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
+      const offset = -new Date().getTimezoneOffset() // minutes east of UTC (330 for India)
       const [dashRes, revRes, topRes] = await Promise.all([
         api.get('/reports/dashboard'),
         api.get('/reports/daily-revenue', { params: { days: 7 } }),
-        api.get('/reports/top-items', { params: { limit: 5 } }),
+        api.get('/reports/top-items', { params: { limit: 5, from: today, to: today, tz, offset } }),
       ])
       setData(dashRes.data.data)
       setRevenue(revRes.data.data || [])
@@ -117,6 +127,14 @@ const Dashboard: React.FC = () => {
   }, [])
 
   useEffect(() => { fetchAll() }, [fetchAll])
+
+  // Left open past midnight? Start the new day's list without needing a reload.
+  useEffect(() => {
+    const t = setInterval(() => {
+      if (localDate() !== loadedDay.current) fetchAll()
+    }, 60_000)
+    return () => clearInterval(t)
+  }, [fetchAll])
 
   useEffect(() => {
     on('ORDER_CREATED', fetchAll)
@@ -319,8 +337,8 @@ const Dashboard: React.FC = () => {
         <Card>
           <div className="flex items-center justify-between mb-6">
             <div>
-              <h2 className="font-semibold text-gray-900">Top Items</h2>
-              <p className="text-xs text-gray-400 mt-0.5">By quantity sold</p>
+              <h2 className="font-semibold text-gray-900">Top Items Today</h2>
+              <p className="text-xs text-gray-400 mt-0.5">By quantity sold · resets every day</p>
             </div>
           </div>
           {topItems.length > 0 ? (
@@ -345,7 +363,7 @@ const Dashboard: React.FC = () => {
             </div>
           ) : (
             <div className="flex items-center justify-center h-40 text-gray-400 text-sm">
-              No sales data yet
+              No sales yet today
             </div>
           )}
         </Card>
