@@ -198,7 +198,7 @@ router.get('/restaurants/:id', authenticate, superAdmin, async (req: Request, re
       query(`SELECT id, email, name, role, is_active, created_at FROM users WHERE restaurant_id = $1 ORDER BY created_at`, [id]),
       query(`SELECT s.*, p.name as plan_name, p.price as plan_price FROM subscriptions s LEFT JOIN subscription_plans p ON p.id = s.plan_id WHERE s.restaurant_id = $1`, [id]),
       query(`SELECT id, invoice_number, amount, status, due_date, paid_at, created_at FROM invoices WHERE restaurant_id = $1 ORDER BY created_at DESC LIMIT 20`, [id]),
-      query(`SELECT COUNT(*) as total_orders, COALESCE(SUM(total_amount),0) as total_revenue FROM orders WHERE restaurant_id = $1 AND status IN ('PAYMENT_PENDING','COMPLETED')`, [id]),
+      query(`SELECT COUNT(*) as total_orders, (SELECT COALESCE(SUM(amount),0) FROM payments WHERE restaurant_id = $1 AND status = 'PAID') as total_revenue FROM orders WHERE restaurant_id = $1 AND status IN ('PAYMENT_PENDING','COMPLETED')`, [id]),
     ]);
 
     res.json(successResponse({
