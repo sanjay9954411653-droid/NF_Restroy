@@ -282,7 +282,7 @@ export class SubscriptionsRepository {
         p.price AS plan_price,
         (SELECT COUNT(*) FROM users u WHERE u.restaurant_id = r.id) AS user_count,
         (SELECT COUNT(*) FROM orders o WHERE o.restaurant_id = r.id AND ${isToday('o.created_at')}) AS orders_today,
-        (SELECT COALESCE(SUM(o.total_amount), 0) FROM orders o WHERE o.restaurant_id = r.id AND o.status = 'COMPLETED' AND ${isToday('o.created_at')}) AS revenue_today,
+        (SELECT COALESCE(SUM(pay.amount), 0) FROM payments pay WHERE pay.restaurant_id = r.id AND pay.status = 'PAID' AND ${isToday('pay.created_at')}) AS revenue_today,
         (SELECT MAX(o.created_at) FROM orders o WHERE o.restaurant_id = r.id) AS last_order_at
       FROM restaurants r
       LEFT JOIN subscriptions s ON s.restaurant_id = r.id
