@@ -687,15 +687,36 @@ const [pushBusy, setPushBusy] = useState(false)
                     {/* READY orders disappear from kitchen — waiter collects payment */}
                     <div className="flex gap-2">
                       <button
-                        onClick={() => {
-                          const unprinted = items.filter((it: any) => !it.kot_printed_at)
-                          const toPrint = unprinted.length > 0 ? unprinted : items
-                          // One ticket per round (each opens its own print window)
-                          groupByRound(toPrint as any[]).forEach((g) => printKOT(order, g.items as any, 'Kitchen', g.round))
-                          if (unprinted.length > 0) {
-                            api.post(`/orders/${order.id}/kot-printed`, { item_ids: unprinted.map((it: any) => it.id) }).catch(() => {})
-                          }
-                        }}
+                        onClick={async () => {
+  const unprinted = items.filter((it: any) => !it.kot_printed_at)
+  const toPrint = unprinted.length > 0 ? unprinted : items
+
+  try {
+    const ready =
+      !!getConnectedPrinter() ||
+      (await silentReconnectUSB()) ||
+      (await silentReconnectBluetooth())
+
+    if (ready) {
+      for (const g of groupByRound(toPrint as any[])) {
+        await printKOTRaw(order, g.items as any, 'Kitchen', g.round)
+      }
+      toast.success('KOT sent to thermal printer')
+    } else {
+      for (const g of groupByRound(toPrint as any[])) {
+        printKOT(order, g.items as any, 'Kitchen', g.round)
+      }
+    }
+
+    if (unprinted.length > 0) {
+      await api.post(`/orders/${order.id}/kot-printed`, {
+        item_ids: unprinted.map((it: any) => it.id),
+      })
+    }
+  } catch (err: any) {
+    toast.error(err?.message || 'Could not print KOT')
+  }
+}}
                         className="flex-1 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-200 text-xs font-medium rounded-lg transition-colors flex items-center justify-center gap-1"
                         title="Print KOT"
                       >
