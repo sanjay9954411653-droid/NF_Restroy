@@ -27,10 +27,10 @@ import type { Order, OrderItem } from '../types/order'
 import { formatWeight } from './weight'
 
 // ── ESC/POS byte building ────────────────────────────────────────────────────
-const ESC = 0x1b
-const GS = 0x1d
+export const ESC = 0x1b
+export const GS = 0x1d
 
-function bytes(...parts: Array<number | string | number[]>): number[] {
+export function bytes(...parts: Array<number | string | number[]>): number[] {
   const out: number[] = []
   for (const p of parts) {
     if (typeof p === 'number') out.push(p)
@@ -41,7 +41,7 @@ function bytes(...parts: Array<number | string | number[]>): number[] {
 }
 
 // Printers print plain ASCII reliably; ₹ and other symbols often don't render.
-function ascii(s: string | undefined | null): string {
+export function ascii(s: string | undefined | null): string {
   return (s || '').replace(/₹/g, 'Rs.').replace(/[^\x20-\x7e\n]/g, '')
 }
 
@@ -77,7 +77,7 @@ export function buildKOTBytes(order: KOTOrder | Order, items: OrderItem[], resta
   out.push(...big(false), ...bold(false))
 
   const tableLabel = order.table?.table_number ? `TABLE ${order.table.table_number}` : ascii(order.order_type || '')
-  out.push(...center(`${tableLabel}  -  ${ascii(order.order_source || '')}`))
+  out.push(...center(`${tableLabel}  ·  ${ascii(order.order_source || '')}`))
   if (order.created_at) out.push(...center(new Date(order.created_at).toLocaleString('en-IN')))
   if (round && round > 1) {
     out.push(...bold(true), ...big(true))
@@ -130,16 +130,47 @@ export function getConnectedPrinter(): PrinterKind | null {
 async function openUsbDevice(device: USBDevice): Promise<PrinterHandle> {
   if (!device.opened) await device.open()
   if (!device.configuration) await device.selectConfiguration(1)
-  const iface = device.configuration!.interfaces[0]
-  await device.claimInterface(iface.interfaceNumber)
-  const outEp = iface.alternate.endpoints.find((e) => e.direction === 'out')
-  if (!outEp) throw new Error('This USB device has no output endpoint — is it a printer?')
-  return { kind: 'usb', device, endpointOut: outEp.endpointNumber }
+
+  // Interfaces that have an OUTPUT endpoint (the printer's data pipe). Printer class (7)
+  // goes first; some printers also list other interfaces (e.g. a driver CD-ROM) that can't be used.
+  const candidates = device.configuration!.interfaces
+    .filter((i) => i.alternate.endpoints.some((e) => e.direction === 'out'))
+    .sort((a, b) => (b.alternate.interfaceClass === 7 ? 1 : 0) - (a.alternate.interfaceClass === 7 ? 1 : 0))
+  if (candidates.length === 0) throw new Error('This USB device has no output endpoint - is it a printer?')
+
+  for (const iface of candidates) {
+    try {
+      await device.claimInterface(iface.interfaceNumber)
+    } catch {
+      // A stale claim from an earlier attempt is the usual cause: close, reopen, try once more.
+      try {
+        await device.close()
+        await device.open()
+        if (!device.configuration) await device.selectConfiguration(1)
+        await device.claimInterface(iface.interfaceNumber)
+      } catch {
+        continue // try the next interface
+      }
+    }
+    const outEp = iface.alternate.endpoints.find((e) => e.direction === 'out')!
+    return { kind: 'usb', device, endpointOut: outEp.endpointNumber }
+  }
+
+  try { await device.close() } catch { /* ignore */ }
+  throw new Error(
+    'Cannot take control of the printer. It is probably in use by another app. ' +
+    'Close any printer apps (RawBT, print plugins), unplug and re-plug the printer, then try again.',
+  )
 }
 
 /** Shows the browser's USB device picker (must be called from a click handler). */
 export async function connectUSB(): Promise<void> {
   if (!navigator.usb) throw new Error('This browser does not support USB printing. Use Chrome.')
+  // Let go of any earlier connection first so the printer isn't claimed twice
+  if (active?.kind === 'usb') {
+    try { await active.device.close() } catch { /* ignore */ }
+    active = null
+  }
   const device = await navigator.usb.requestDevice({ filters: [] })
   active = await openUsbDevice(device)
   localStorage.setItem(USB_KEY, JSON.stringify({ vendorId: device.vendorId, productId: device.productId }))

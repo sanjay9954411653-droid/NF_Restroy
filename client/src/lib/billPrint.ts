@@ -12,7 +12,12 @@ import { formatDate } from './utils'
 import { formatWeight, ratePerKg } from './weight'
 import { calcBill } from './billing'
 import { couponApi } from './growthApi'
+import toast from 'react-hot-toast'
 import { printHtml } from './printHtml'
+import {
+  ascii, bytes, ESC, GS,
+  getConnectedPrinter, printRaw, silentReconnectUSB, silentReconnectBluetooth,
+} from './thermalPrinter'
 
 export interface BillRestaurant {
   name: string
@@ -120,7 +125,7 @@ export async function loadBillData(orderId: string, tableNumber?: string): Promi
 
 const CSS = `
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#000;background:#fff;width:72mm;max-width:100%;margin:0 auto;padding:2mm 1mm}
+body{font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#000;background:#fff;width:80mm;margin:0 auto;padding:6px 8px}
 .c{text-align:center}
 .row{display:flex;justify-content:space-between;gap:8px;padding:2px 0}
 .row span:first-child{flex:1}
@@ -136,8 +141,8 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#000;background
 .total{font-size:15px;font-weight:700;border-top:1px solid #000;margin-top:5px;padding-top:5px}
 .qr{width:92px;height:92px;display:block;margin:4px auto}
 .foot{font-size:11px;margin-top:2px}
-@page{size:80mm auto;margin:0}
-@media print{body{padding:0 1mm}}
+@page{size:80mm auto;margin:3mm}
+@media print{body{padding:0}}
 `
 
 export function buildBillBody(data: BillData): string {
@@ -223,8 +228,161 @@ export function buildBillDocument(data: BillData): string {
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Bill ${esc(data.order.order_number)}</title><style>${CSS}</style></head><body>${buildBillBody(data)}</body></html>`
 }
 
+// ── Direct thermal (ESC/POS) bill ────────────────────────────────────────────
+// Used when a USB / Bluetooth receipt printer is connected, so "Print Bill" prints
+// straight away instead of opening the phone's print dialog (which only offers PDF).
+
+const PAPER_KEY = 'bill_paper_width'
+export type PaperWidth = 58 | 80
+
+/** 58 mm is the common phone / OTG printer size; 80 mm is the larger counter printer. */
+export function getBillPaperWidth(): PaperWidth {
+  try { return localStorage.getItem(PAPER_KEY) === '80' ? 80 : 58 } catch { return 58 }
+}
+export function setBillPaperWidth(w: PaperWidth): void {
+  try { localStorage.setItem(PAPER_KEY, String(w)) } catch { /* ignore */ }
+}
+
+const money = (n: number) => Number(n).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+/** Builds the raw ESC/POS bytes for a bill. `cols` = characters per line (32 for 58 mm, 42 for 80 mm). */
+export function buildBillBytes(data: BillData, cols: number = getBillPaperWidth() === 80 ? 42 : 32): Uint8Array {
+  const { order, items, restaurant, tableNumber, coupon } = data
+  const b = computeBill(data)
+  const isParcel = order.order_type !== 'DINE_IN'
+  const W = cols
+
+  const out: number[] = []
+  const push = (...p: Array<number | string | number[]>) => { out.push(...bytes(...p)) }
+  const align = (n: 0 | 1) => push(ESC, 0x61, n)
+  const bold = (on: boolean) => push(ESC, 0x45, on ? 1 : 0)
+  const big = (on: boolean) => push(GS, 0x21, on ? 0x11 : 0x00)
+
+  const wrap = (text: string, width: number): string[] => {
+    const t = ascii(text).replace(/\s+/g, ' ').trim()
+    const lines: string[] = []
+    let cur = ''
+    for (const word of t.split(' ')) {
+      if (word.length > width) {
+        if (cur) { lines.push(cur); cur = '' }
+        for (let i = 0; i < word.length; i += width) lines.push(word.slice(i, i + width))
+      } else if ((cur ? cur.length + 1 : 0) + word.length > width) {
+        lines.push(cur); cur = word
+      } else {
+        cur = cur ? `${cur} ${word}` : word
+      }
+    }
+    if (cur) lines.push(cur)
+    return lines
+  }
+  const center = (text: string) => { align(1); wrap(text, W).forEach((l) => push(l + '\n')); align(0) }
+  const lr = (left: string, right: string) => {
+    const r = ascii(right)
+    const l = ascii(left).slice(0, Math.max(1, W - r.length - 1))
+    push(l + ' '.repeat(Math.max(1, W - l.length - r.length)) + r + '\n')
+  }
+  const rule = () => push('-'.repeat(W) + '\n')
+
+  push(ESC, 0x40) // reset
+
+  // Header
+  if (restaurant.show_name_in_bill) {
+    const name = ascii(restaurant.name).toUpperCase()
+    bold(true)
+    if (name.length * 2 <= W) { big(true); center(name); big(false) } else center(name)
+    bold(false)
+  }
+  if (restaurant.address) center(restaurant.address)
+  if (restaurant.phone) center(`Ph: ${restaurant.phone}`)
+  if (restaurant.gstin) center(`GSTIN: ${restaurant.gstin}`)
+  if (restaurant.fssai_no) center(`FSSAI: ${restaurant.fssai_no}`)
+  center(formatDate(order.created_at))
+  rule()
+  lr('Order #', String(order.order_number))
+  if (tableNumber) lr('Table', String(tableNumber))
+  lr('Type', String(order.order_type))
+  rule()
+
+  // Items
+  lr('ITEM', 'AMOUNT')
+  for (const item of items) {
+    const unit = Number(item.unit_price || 0)
+    bold(true)
+    wrap(item.menu_item_name || String(item.menu_item_id), W).forEach((l) => push(l + '\n'))
+    bold(false)
+    const mods = (item.modifiers || []).map((m) => m.modifier_option_name).filter(Boolean).join(', ')
+    if (mods) wrap(mods, W - 2).forEach((l) => push('  ' + l + '\n'))
+    const detail = item.weight_grams
+      ? `${formatWeight(item.weight_grams)} x ${money(ratePerKg(unit, item.weight_grams))}/kg`
+      : `${item.quantity} x ${money(unit)}`
+    lr('  ' + detail, money(unit * item.quantity))
+  }
+  rule()
+
+  // Totals
+  lr(`Subtotal${restaurant.tax_inclusive ? ' (incl GST)' : ''}`, money(b.subtotal))
+  if (b.discount > 0) lr(`Discount (${restaurant.discount_percent}%)`, `-${money(b.discount)}`)
+  if (b.coupon > 0) lr(coupon.code ? `Coupon (${coupon.code})` : 'Coupon/points', `-${money(b.coupon)}`)
+  if (b.serviceCharge > 0) lr(`Service chg (${restaurant.service_charge_percent}%)`, money(b.serviceCharge))
+  if (b.otherCharges > 0) lr(`Other chg (${restaurant.other_charges_percent}%)`, money(b.otherCharges))
+  if (b.extra > 0) lr('Extra charges', money(b.extra))
+  if (restaurant.tax_rate > 0) {
+    if (isParcel) lr(`IGST (${restaurant.tax_rate}%)`, money(b.cgst + b.sgst))
+    else {
+      lr(`CGST (${restaurant.tax_rate / 2}%)`, money(b.cgst))
+      lr(`SGST (${restaurant.tax_rate / 2}%)`, money(b.sgst))
+    }
+  }
+  rule()
+  bold(true)
+  lr('GRAND TOTAL', `Rs.${money(b.grandTotal)}`)
+  bold(false)
+  rule()
+
+  // UPI "scan to pay" QR using the printer's built-in QR command.
+  if (restaurant.upi_id) {
+    const upi = `upi://pay?pa=${restaurant.upi_id}&am=${b.grandTotal.toFixed(2)}&cu=INR`
+    const len = upi.length + 3
+    center('Scan to Pay')
+    align(1)
+    push(GS, 0x28, 0x6b, 4, 0, 0x31, 0x41, 0x32, 0)          // model 2
+    push(GS, 0x28, 0x6b, 3, 0, 0x31, 0x43, W >= 42 ? 6 : 5)  // module size
+    push(GS, 0x28, 0x6b, 3, 0, 0x31, 0x45, 0x31)              // error correction M
+    push(GS, 0x28, 0x6b, len & 0xff, (len >> 8) & 0xff, 0x31, 0x50, 0x30, upi) // store data
+    push(GS, 0x28, 0x6b, 3, 0, 0x31, 0x51, 0x30)              // print
+    push('\n')
+    align(0)
+    center(restaurant.upi_id)
+    rule()
+  }
+
+  center('Thank you for dining with us!')
+  push('\n\n\n\n')
+  push(GS, 0x56, 1) // partial cut
+  return new Uint8Array(out)
+}
+
+/**
+ * Prints a bill. If a thermal printer is (or can silently be) connected it goes straight
+ * to the printer; otherwise it falls back to the browser's print dialog.
+ */
+export async function printBillData(data: BillData): Promise<void> {
+  try {
+    const ready =
+      !!getConnectedPrinter() || (await silentReconnectUSB()) || (await silentReconnectBluetooth())
+    if (ready) {
+      await printRaw(buildBillBytes(data))
+      return
+    }
+  } catch (err) {
+    console.error('Direct print failed, falling back to browser print', err)
+    toast.error('Printer not responding - opening the print dialog instead')
+  }
+  await printHtml(buildBillDocument(data))
+}
+
 /** Print the standard bill for any order id. Used by every "Print Bill / Receipt" button. */
 export async function printBill(orderId: string, tableNumber?: string): Promise<void> {
   const data = await loadBillData(orderId, tableNumber)
-  await printHtml(buildBillDocument(data))
+  await printBillData(data)
 }
