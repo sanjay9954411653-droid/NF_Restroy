@@ -7,8 +7,7 @@
  *   - Each item with quantity and special instructions
  *   - Timestamp
  *
- * Designed for 80mm thermal printers (standard kitchen printers).
- * Uses browser's native window.print() — no external library needed.
+ * Sends KOTs directly to the connected ESC/POS thermal printer.
  *
  * Usage:
  *   <PrintKOT order={order} items={items} onClose={() => {}} />
@@ -18,14 +17,9 @@
 
 import React from 'react'
 import { Order, OrderItem } from '../types/order'
-import { formatDate } from '../lib/utils'
 import { formatWeight } from '../lib/weight'
-import { printHtml } from '../lib/printHtml'
-
-function esc(s: string | undefined | null): string {
-  if (!s) return ''
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
-}
+import { printKOTRaw } from '../lib/thermalPrinter'
+import toast from 'react-hot-toast'
 
 interface PrintKOTProps {
   order: Order
@@ -34,102 +28,22 @@ interface PrintKOTProps {
   onClose: () => void
 }
 
-/**
- * Programmatically print a KOT without showing a preview modal.
- * Opens a new window, writes the HTML, triggers print, closes.
- */
-export function printKOT(order: Order, items: OrderItem[], restaurantName = 'Kitchen', round?: number): void {
-  const fmtMods = (mods?: any[]) =>
-    mods && mods.length > 0
-      ? `<div style="font-size:11px;font-weight:normal;color:#555;margin-top:2px;">${mods
-          .map((m) => {
-            const adj = Number(m.price_adjustment || 0)
-            return `${esc(m.modifier_option_name)}${adj > 0 ? ` (+${adj})` : adj < 0 ? ` (${adj})` : ''}`
-          })
-          .join(', ')}</div>`
-      : ''
-
-  const itemRows = items
-    .map(
-      (item) => `
-      <tr>
-        <td style="font-size:16px;font-weight:bold;padding:2px 0;">${item.weight_grams ? esc(formatWeight(item.weight_grams)) : `${item.quantity}x`}</td>
-        <td style="padding:2px 4px;font-size:14px;font-weight:bold;">
-          ${esc(item.menu_item_name || item.menu_item_id)}
-          ${fmtMods(item.modifiers)}
-          ${item.special_instructions
-            ? `<div style="font-size:11px;font-weight:normal;color:#555;margin-top:2px;">📝 ${esc(item.special_instructions)}</div>`
-            : ''}
-        </td>
-      </tr>`,
-    )
-    .join('')
-
-  printHtml(`
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="utf-8">
-      <title>KOT — ${esc(order.order_number)}</title>
-      <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-          font-family: 'Courier New', monospace;
-          font-size: 13px;
-          color: #000;
-          background: #fff;
-          padding: 2mm 1mm;
-          width: 72mm;
-          max-width: 100%;
-        }
-        .center { text-align: center; }
-        .divider { border-top: 1px dashed #000; margin: 6px 0; }
-        .order-num { font-size: 28px; font-weight: bold; letter-spacing: 2px; }
-        table { width: 100%; border-collapse: collapse; }
-        @media print {
-          @page { size: 80mm auto; margin: 0; }
-          body { padding: 0 1mm; }
-        }
-      </style>
-    </head>
-    <body>
-      <div class="center">
-        <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;">${esc(restaurantName)}</div>
-        <div style="font-size:11px;">KITCHEN ORDER TICKET</div>
-      </div>
-      <div class="divider"></div>
-
-      <div class="center">
-        <div class="order-num">${esc(order.order_number)}</div>
-        <div style="font-size:12px;margin-top:2px;">
-          ${order.table?.table_number ? `TABLE ${esc(String(order.table.table_number))}` : esc(order.order_type)}
-          &nbsp;·&nbsp;
-          ${esc(order.order_source)}
-        </div>
-        <div style="font-size:11px;color:#555;">${formatDate(order.created_at)}</div>
-        ${round && round > 1 ? `<div style="font-size:22px;font-weight:bold;margin-top:6px;border:2px solid #000;display:inline-block;padding:2px 10px;">ROUND ${round}</div><div style="font-size:10px;margin-top:2px;">ADD-ON ITEMS ONLY</div>` : ''}
-      </div>
-
-      <div class="divider"></div>
-
-      <table>
-        <tbody>${itemRows}</tbody>
-      </table>
-
-      ${order.special_instructions ? `
-        <div class="divider"></div>
-        <div style="font-size:11px;">
-          <strong>NOTE:</strong> ${esc(order.special_instructions)}
-        </div>
-      ` : ''}
-
-      <div class="divider"></div>
-      <div class="center" style="font-size:10px;color:#777;">
-        ${new Date().toLocaleTimeString('en-IN')}
-      </div>
-    </body>
-    </html>
-  `)
+/** Print directly to the printer already connected from the Kitchen display. */
+export async function printKOT(
+  order: Order,
+  items: OrderItem[],
+  restaurantName = 'Kitchen',
+  round?: number,
+): Promise<boolean> {
+  try {
+    await printKOTRaw(order, items, restaurantName, round)
+    toast.success('KOT sent to thermal printer')
+    return true
+  } catch (error: any) {
+    const message = error?.message || 'Could not print KOT'
+    toast.error(message)
+    return false
+  }
 }
 
 /**
@@ -137,9 +51,9 @@ export function printKOT(order: Order, items: OrderItem[], restaurantName = 'Kit
  * Useful for verifying before sending to printer.
  */
 const PrintKOT: React.FC<PrintKOTProps> = ({ order, items, restaurantName = 'Kitchen', onClose }) => {
-  const handlePrint = () => {
-    printKOT(order, items, restaurantName)
-    onClose()
+  const handlePrint = async () => {
+    const printed = await printKOT(order, items, restaurantName)
+    if (printed) onClose()
   }
 
   const fmtMods = (mods?: any[]) =>
