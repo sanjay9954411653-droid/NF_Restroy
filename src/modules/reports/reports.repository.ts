@@ -6,6 +6,7 @@ import {
   TopSellingItem,
   PaymentModeRow,
 } from "./reports.types";
+import { isToday, todayLocal, localDay } from '@/shared/businessTime';
 
 export class ReportsRepository {
   async getDashboardReport(restaurantId: string): Promise<DashboardReport> {
@@ -14,48 +15,48 @@ export class ReportsRepository {
          (SELECT COUNT(*)
           FROM orders
           WHERE restaurant_id = $1
-          AND DATE(created_at) = CURRENT_DATE) AS total_orders_today,
+          AND ${isToday('created_at')}) AS total_orders_today,
 
          (SELECT COUNT(*)
           FROM orders
           WHERE restaurant_id = $1
           AND status = 'COMPLETED'
-          AND DATE(created_at) = CURRENT_DATE) AS completed_orders_today,
+          AND ${isToday('created_at')}) AS completed_orders_today,
 
          (SELECT COUNT(*)
           FROM orders
           WHERE restaurant_id = $1
           AND status = 'CANCELLED'
-          AND DATE(created_at) = CURRENT_DATE) AS cancelled_orders_today,
+          AND ${isToday('created_at')}) AS cancelled_orders_today,
 
          (SELECT COUNT(*)
           FROM orders
           WHERE restaurant_id = $1
           AND status NOT IN ('COMPLETED', 'CANCELLED')
-          AND DATE(created_at) = CURRENT_DATE) AS active_orders,
-
-         (SELECT COALESCE(SUM(total_amount), 0)
-          FROM orders
-          WHERE restaurant_id = $1
-          AND status = 'COMPLETED'
-          AND DATE(created_at) = CURRENT_DATE) AS revenue_today,
-
-         (SELECT COUNT(*)
-          FROM payments
-          WHERE restaurant_id = $1
-          AND DATE(created_at) = CURRENT_DATE) AS payments_today,
+          AND ${isToday('created_at')}) AS active_orders,
 
          (SELECT COALESCE(SUM(amount), 0)
           FROM payments
           WHERE restaurant_id = $1
           AND status = 'PAID'
-          AND DATE(created_at) = CURRENT_DATE) AS paid_amount_today,
+          AND ${isToday('created_at')}) AS revenue_today,
+
+         (SELECT COUNT(*)
+          FROM payments
+          WHERE restaurant_id = $1
+          AND ${isToday('created_at')}) AS payments_today,
+
+         (SELECT COALESCE(SUM(amount), 0)
+          FROM payments
+          WHERE restaurant_id = $1
+          AND status = 'PAID'
+          AND ${isToday('created_at')}) AS paid_amount_today,
 
          (SELECT COALESCE(SUM(amount), 0)
           FROM payments
           WHERE restaurant_id = $1
           AND status = 'REFUNDED'
-          AND DATE(created_at) = CURRENT_DATE) AS refunded_amount_today,
+          AND ${isToday('created_at')}) AS refunded_amount_today,
 
          (SELECT COUNT(*)
           FROM inventory_items
@@ -88,67 +89,46 @@ export class ReportsRepository {
   }
 
   /**
-   * Best sellers by quantity. Cancelled orders never count as sold.
-   * With `range`, only orders placed on those LOCAL dates count (the owner's
-   * midnight, not the server's) — used for the dashboard's "today" list.
+   * Best sellers by quantity. With no dates it covers today only (restaurant's
+   * local day), so the list starts fresh every day. Cancelled orders are ignored.
    */
   async getTopSellingItems(
     restaurantId: string,
     limit: number,
-    range?: { from: string; to: string; zoneCandidates: string[]; offsetMinutes: number },
-    sort: 'quantity' | 'revenue' = 'quantity',
+    from?: string,
+    to?: string,
   ): Promise<TopSellingItem[]> {
-    let dateFilter = '';
-    const params: unknown[] = [restaurantId, limit];
-
-    if (range) {
-      const known = await query(
-        `SELECT name FROM pg_timezone_names WHERE name = ANY($1::text[]) LIMIT 1`,
-        [range.zoneCandidates],
-      );
-      const zone: string | undefined = known.rows[0]?.name;
-      const localDate = zone
-        ? `((o.created_at AT TIME ZONE 'UTC') AT TIME ZONE $5::text)::date`
-        : `(o.created_at + make_interval(mins => $5::int))::date`;
-      dateFilter = `AND ${localDate} BETWEEN $3::date AND $4::date`;
-      params.push(range.from, range.to, zone ?? range.offsetMinutes);
-    }
-
-    // Fixed strings only (never user input), so safe to put in the SQL
-    const orderBy =
-      sort === 'revenue'
-        ? 'total_revenue DESC, total_quantity DESC'
-        : 'total_quantity DESC, total_revenue DESC';
-
     const result = await query(
       `SELECT
          oi.menu_item_id,
          mi.name,
          SUM(oi.quantity) AS total_quantity,
-         COALESCE(SUM(oi.quantity * oi.unit_price), 0) AS total_revenue,
-         COALESCE(SUM(oi.weight_grams), 0) AS total_weight_grams
+         COALESCE(SUM(oi.quantity * oi.unit_price), 0) AS total_revenue
        FROM order_items oi
        JOIN orders o ON oi.order_id = o.id
        JOIN menu_items mi ON oi.menu_item_id = mi.id
        WHERE o.restaurant_id = $1
          AND o.status <> 'CANCELLED'
-         ${dateFilter}
+         AND ${localDay('o.created_at')} BETWEEN COALESCE($3::date, ${todayLocal}) AND COALESCE($4::date, $3::date, ${todayLocal})
        GROUP BY oi.menu_item_id, mi.name
-       ORDER BY ${orderBy}
+       ORDER BY total_quantity DESC, total_revenue DESC
        LIMIT $2`,
-      params,
+      [restaurantId, limit, from ?? null, to ?? null],
     );
 
     return result.rows.map((row) => ({
       menu_item_id: row.menu_item_id,
       name: row.name,
       total_quantity: parseInt(row.total_quantity, 10) || 0,
-
       total_revenue: parseFloat(row.total_revenue) || 0,
-      total_weight_grams: parseInt(row.total_weight_grams, 10) || 0,
     }));
   }
 
+  /**
+   * Daily revenue = money actually received (payments with status PAID).
+   * Refunded payments change status to REFUNDED, so they are already excluded;
+   * nothing is subtracted again. Matches the payments report.
+   */
   async getDailyRevenue(
     restaurantId: string,
     days: number,
@@ -156,23 +136,16 @@ export class ReportsRepository {
     const result = await query(
       `SELECT
          to_char(date_series, 'YYYY-MM-DD') AS date,
-         COALESCE(SUM(o.total_amount), 0)
-           - COALESCE((
-               SELECT SUM(p.amount)
-               FROM payments p
-               WHERE p.restaurant_id = $1
-                 AND p.status = 'REFUNDED'
-                 AND DATE(p.created_at) = date_series
-             ), 0) AS revenue
+         COALESCE(SUM(p.amount), 0) AS revenue
        FROM generate_series(
-         CURRENT_DATE - ($2 - 1) * INTERVAL '1 day',
-         CURRENT_DATE,
+         ${todayLocal} - ($2 - 1) * INTERVAL '1 day',
+         ${todayLocal},
          '1 day'
        ) AS date_series
-       LEFT JOIN orders o
-         ON DATE(o.created_at) = date_series
-         AND o.restaurant_id = $1
-         AND o.status = 'COMPLETED'
+       LEFT JOIN payments p
+         ON ${localDay('p.created_at')} = date_series
+         AND p.restaurant_id = $1
+         AND p.status = 'PAID'
        GROUP BY date_series
        ORDER BY date_series ASC`,
       [restaurantId, days],

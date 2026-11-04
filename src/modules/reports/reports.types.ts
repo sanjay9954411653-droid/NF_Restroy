@@ -1,30 +1,21 @@
 import { z } from 'zod';
 
-const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD');
+const topItemsDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD');
 
-// With no dates this is the all-time list (Reports page). The dashboard sends
-// today's date so the list starts fresh every day, in the owner's own timezone.
 export const TopItemsQuerySchema = z
   .object({
-    limit: z.preprocess((value) => Number(value), z.number().int().min(1).max(50).default(10)),
-    // Rank by units sold (default) or by money made
-    sort: z.enum(['quantity', 'revenue']).default('quantity'),
-    from: isoDate.optional(),
-    to: isoDate.optional(),
-    tz: z.string().max(64).optional(),
-    offset: z.preprocess(
-      (v) => (v === undefined || v === '' ? undefined : Number(v)),
-      z.number().int().min(-840).max(840).optional(),
-    ),
-  })
-  .refine((q) => (q.from === undefined) === (q.to === undefined), {
-    message: 'Send both "from" and "to", or neither',
+    limit: z.preprocess((value) => Number(value), z.number().int().min(1).max(500).default(10)),
+    // Optional range (restaurant's local calendar days, inclusive). Omitted = today only.
+    from: topItemsDate.optional(),
+    to: topItemsDate.optional(),
   })
   .refine((q) => !q.from || !q.to || q.from <= q.to, { message: '"from" must not be after "to"' });
 
 export const DailyRevenueQuerySchema = z.object({
   days: z.preprocess((value) => Number(value), z.number().int().min(1).max(90).default(7)),
 });
+
+const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD');
 
 export const PaymentModesQuerySchema = z
   .object({
@@ -63,8 +54,6 @@ export interface TopSellingItem {
   name: string;
   total_quantity: number;
   total_revenue: number;
-  /** Total weight sold, in grams, for items sold by kg / 100 g (0 for normal items) */
-  total_weight_grams: number;
 }
 
 export interface PaymentModeRow {

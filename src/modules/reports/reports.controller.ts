@@ -23,12 +23,7 @@ export class ReportsController {
       if (!restaurantId) throw new Error('User not associated with a restaurant');
 
       const query = TopItemsQuerySchema.parse(req.query);
-      const items = await reportsService.getTopSellingItems(
-        restaurantId,
-        query.limit,
-        query.from && query.to ? { from: query.from, to: query.to, tz: query.tz, offset: query.offset } : undefined,
-        query.sort,
-      );
+      const items = await reportsService.getTopSellingItems(restaurantId, query.limit, query.from, query.to);
       res.status(200).json(successResponse(items));
     } catch (error) {
       next(error);
