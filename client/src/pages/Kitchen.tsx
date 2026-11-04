@@ -6,7 +6,6 @@ import { Order, OrderStatus } from '../types/order'
 import { ClockIcon, CheckCircleIcon, WifiIcon, ExclamationCircleIcon, PrinterIcon } from '@heroicons/react/24/outline'
 import { formatElapsed } from '../lib/utils'
 import { formatWeight } from '../lib/weight'
-import { printKOT } from '../components/PrintKOT'
 import {
   enablePushNotifications,
   disablePushNotifications,
@@ -697,16 +696,14 @@ const [pushBusy, setPushBusy] = useState(false)
       (await silentReconnectUSB()) ||
       (await silentReconnectBluetooth())
 
-    if (ready) {
-      for (const g of groupByRound(toPrint as any[])) {
-        await printKOTRaw(order, g.items as any, 'Kitchen', g.round)
-      }
-      toast.success('KOT sent to thermal printer')
-    } else {
-      for (const g of groupByRound(toPrint as any[])) {
-        printKOT(order, g.items as any, 'Kitchen', g.round)
-      }
+    if (!ready) {
+      throw new Error('Kitchen printer is not connected. Tap Connect Printer and select your USB printer.')
     }
+
+    for (const g of groupByRound(toPrint as any[])) {
+      await printKOTRaw(order, g.items as any, 'Kitchen', g.round)
+    }
+    toast.success('KOT sent directly to thermal printer')
 
     if (unprinted.length > 0) {
       await api.post(`/orders/${order.id}/kot-printed`, {
