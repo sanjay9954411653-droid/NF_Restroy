@@ -12,12 +12,15 @@ import rateLimit from 'express-rate-limit';
 
 /**
  * Auth rate limiter — applied to /auth/login and /auth/register.
- * 10 attempts per 15 minutes per IP.
+ * 20 failed attempts per 15 minutes per IP.
  * Prevents brute-force password attacks.
  */
 export const authRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 10,
+  // Staff share one restaurant WiFi (one IP), so only FAILED attempts count and
+  // the limit is higher. A successful login no longer uses up the allowance.
+  max: 20,
+  skipSuccessfulRequests: true,
   standardHeaders: true,  // Return rate limit info in RateLimit-* headers
   legacyHeaders: false,
   message: {
