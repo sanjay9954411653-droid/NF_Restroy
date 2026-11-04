@@ -11,6 +11,7 @@ import toast from 'react-hot-toast'
 import { Order, OrderItem } from '../types/order'
 import { buildBillDocument, loadBillData, printBill } from '../lib/billPrint'
 import { getErrorMessage } from '../api'
+import PrinterConnect from './PrinterConnect'
 
 interface PrintReceiptProps {
   order: Order
@@ -57,6 +58,7 @@ const PrintReceipt: React.FC<PrintReceiptProps> = ({ order, onClose }) => {
             <div className="h-40 flex items-center justify-center text-sm text-gray-400">Loading bill…</div>
           )}
         </div>
+        <div className="px-4 pt-3"><PrinterConnect /></div>
         <div className="p-4 flex gap-3">
           <button
             onClick={handlePrint}
