@@ -36,7 +36,9 @@ async function getRestaurantBySlug(slug: string) {
             discount_percent::float8 AS discount_percent,
             service_charge_percent::float8 AS service_charge_percent,
             other_charges_percent::float8 AS other_charges_percent,
-            extra_charges_amount::float8 AS extra_charges_amount
+            extra_charges_amount::float8 AS extra_charges_amount,
+            extra_charges_amount::float8 AS extra_charges_amount,
+            table_passcode_required
      FROM restaurants WHERE slug = $1 LIMIT 1`,
     [slug],
   );
@@ -198,7 +200,10 @@ router.get('/tables/:slug/qr/:token', async (req: Request, res: Response, next: 
     );
     if (result.rows.length === 0) throw new NotFoundError('Table not found for this QR code');
 
-    res.json(successResponse(result.rows[0]));
+        res.json(successResponse({
+      ...result.rows[0],
+      passcode_required: restaurant.table_passcode_required !== false,
+    }));
   } catch (err) {
     next(err);
   }
@@ -219,6 +224,11 @@ router.post('/tables/:slug/verify-passcode', async (req: Request, res: Response,
     if (!restaurant) throw new NotFoundError('Restaurant not found');
 
     const payload = VerifyPasscodeSchema.parse(req.body);
+        // PIN switched off by the restaurant — nothing to check.
+    if (restaurant.table_passcode_required === false) {
+      res.json(successResponse({ valid: true }));
+      return;
+    }
 
     const result = await query(
       `SELECT id FROM restaurant_tables
@@ -518,7 +528,7 @@ router.post('/order/:slug', publicOrderRateLimiter, async (req: Request, res: Re
         throw new BadRequestError('Table not found');
       }
             const tablePasscode = tableCheck.rows[0].passcode;
-      if (tablePasscode && payload.table_passcode !== tablePasscode) {
+      if (restaurant.table_passcode_required !== false && tablePasscode && payload.table_passcode !== tablePasscode) {
         throw new BadRequestError('Table passcode is missing or incorrect');
       }
     }
