@@ -18,6 +18,8 @@ export interface MenuItem {
   price: number
   /** What the price means: per piece (default), per kg, or per 100 g */
   price_unit?: 'PIECE' | 'KG' | '100G'
+  /** By-weight items only: price of ONE piece, when the item can also be sold by the piece */
+  piece_price?: number | null
   prep_time_minutes: number
   is_vegetarian: boolean
   image_url?: string | null

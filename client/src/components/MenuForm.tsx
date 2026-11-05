@@ -23,6 +23,7 @@ const MenuForm: React.FC<MenuFormProps> = ({ menuItem, onClose, onSave }) => {
   const [description, setDescription] = useState(menuItem?.description || '');
   const [price, setPrice] = useState(Number(menuItem?.price) || 0);
   const [priceUnit, setPriceUnit] = useState<'PIECE' | 'KG' | '100G'>(menuItem?.price_unit || 'PIECE');
+  const [piecePrice, setPiecePrice] = useState(menuItem?.piece_price ? String(Number(menuItem.piece_price)) : '');
   const [categoryId, setCategoryId] = useState(menuItem?.category_id || '');
   const [prepTime, setPrepTime] = useState(menuItem?.prep_time_minutes || 15);
   const [isVegetarian, setIsVegetarian] = useState(menuItem?.is_vegetarian ?? false);
@@ -47,6 +48,7 @@ const MenuForm: React.FC<MenuFormProps> = ({ menuItem, onClose, onSave }) => {
       setDescription(menuItem.description || '');
       setPrice(Number(menuItem.price));
       setPriceUnit(menuItem.price_unit || 'PIECE');
+      setPiecePrice(menuItem.piece_price ? String(Number(menuItem.piece_price)) : '');
       setCategoryId(menuItem.category_id);
       setPrepTime(menuItem.prep_time_minutes);
       setIsVegetarian(menuItem.is_vegetarian);
@@ -59,6 +61,7 @@ const MenuForm: React.FC<MenuFormProps> = ({ menuItem, onClose, onSave }) => {
       setDescription('');
       setPrice(0);
       setPriceUnit('PIECE');
+      setPiecePrice('');
       setCategoryId('');
       setPrepTime(15);
       setIsVegetarian(false);
@@ -154,6 +157,7 @@ const MenuForm: React.FC<MenuFormProps> = ({ menuItem, onClose, onSave }) => {
       description,
       price: Number(price),
       price_unit: priceUnit,
+      piece_price: priceUnit !== 'PIECE' && Number(piecePrice) > 0 ? Number(piecePrice) : null,
       prep_time_minutes: Number(prepTime),
       is_vegetarian: isVegetarian,
       is_active: isActive,
@@ -297,6 +301,23 @@ const MenuForm: React.FC<MenuFormProps> = ({ menuItem, onClose, onSave }) => {
                 </p>
               )}
             </div>
+            {priceUnit !== 'PIECE' && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Also sold by piece? (₹ per piece)</label>
+                <input
+                  type="number"
+                  value={piecePrice}
+                  onChange={(e) => setPiecePrice(e.target.value)}
+                  min="0"
+                  step="0.01"
+                  placeholder="Leave empty if sold by weight only"
+                  className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  If you enter a price, staff can choose "By weight" or "By piece" when adding this item.
+                </p>
+              </div>
+            )}
             <div>
               <label className="block text-sm font-medium text-gray-700">Prep Time (minutes)</label>
               <input

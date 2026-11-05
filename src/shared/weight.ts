@@ -45,16 +45,22 @@ export interface PricedLine {
  * price (and weight to store) or a plain-English error to show the staff.
  *
  *  - By-weight item  -> a weight is required, quantity must be 1, price = amount for that weight.
+ *                       If the item also has a piece price, an order line WITHOUT a weight is a
+ *                       by-piece line: quantity N x piece price.
  *  - Normal item     -> a weight is not allowed, price = menu price.
  */
 export function priceOrderLine(
-  menuItem: { name: string; price: number | string; price_unit?: string | null },
+  menuItem: { name: string; price: number | string; price_unit?: string | null; piece_price?: number | string | null },
   line: { quantity: number; weight_grams?: number | null },
 ): PricedLine | { error: string } {
   const unit = menuItem.price_unit;
 
   if (isWeighedUnit(unit)) {
     const grams = Number(line.weight_grams) || 0;
+    const piecePrice = menuItem.piece_price != null ? Number(menuItem.piece_price) : 0;
+    if (!(grams > 0) && piecePrice > 0) {
+      return { unit_price: piecePrice, weight_grams: null };
+    }
     if (!(grams > 0)) {
       return { error: `"${menuItem.name}" is sold by weight. Enter the weight (e.g. 250 g).` };
     }

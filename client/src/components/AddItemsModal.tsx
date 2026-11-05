@@ -89,9 +89,27 @@ const AddItemsModal: React.FC<AddItemsModalProps> = ({ orderId, orderNumber, onC
     setWeightFor(null)
   }
 
+
+  // Item sold by weight AND by piece: add it as a normal by-piece line (quantity x piece price)
+  const confirmPiece = (quantity: number) => {
+    if (!weightFor) return
+    const { item } = weightFor
+    const piecePrice = Number(item.piece_price)
+    if (!(piecePrice > 0)) return
+    setCart((prev) => {
+      const existing = prev.find((c) => c.menu_item_id === item.id && !c.weight_grams && !c.special_instructions)
+      if (existing) {
+        return prev.map((c) => (c === existing ? { ...c, quantity: c.quantity + quantity } : c))
+      }
+      return [...prev, { menu_item_id: item.id, name: item.name, price: piecePrice, quantity }]
+    })
+    setWeightFor(null)
+  }
+
   const addToCart = (item: MenuItem) => {
     if (isWeighed(item.price_unit)) {
-      const idx = cart.findIndex((c) => c.menu_item_id === item.id && c.weight_grams)
+      // Items that can also be sold by piece always open a fresh entry (use "Edit weight" on a line to change it)
+      const idx = Number(item.piece_price) > 0 ? -1 : cart.findIndex((c) => c.menu_item_id === item.id && c.weight_grams)
       setWeightFor({ item, lineIdx: idx >= 0 ? idx : undefined })
       return
     }
@@ -311,6 +329,8 @@ const AddItemsModal: React.FC<AddItemsModalProps> = ({ orderId, orderNumber, onC
           price={Number(weightFor.item.price)}
           unit={weightFor.item.price_unit as PriceUnit}
           initialGrams={weightFor.lineIdx !== undefined ? cart[weightFor.lineIdx]?.weight_grams : undefined}
+          piecePrice={weightFor.lineIdx === undefined && Number(weightFor.item.piece_price) > 0 ? Number(weightFor.item.piece_price) : undefined}
+          onConfirmPiece={confirmPiece}
           onConfirm={confirmWeight}
           onClose={() => setWeightFor(null)}
         />

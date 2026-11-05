@@ -291,6 +291,9 @@ const Menu: React.FC = () => {
                       {priceUnitSuffix(item.price_unit) && (
                         <span className="text-xs font-medium text-gray-500"> {priceUnitSuffix(item.price_unit)}</span>
                       )}
+                      {priceUnitSuffix(item.price_unit) && Number(item.piece_price) > 0 && (
+                        <span className="block text-xs font-medium text-gray-500 text-right">or {formatCurrency(item.piece_price as number)} / pc</span>
+                      )}
                     </span>
                   </div>
 
