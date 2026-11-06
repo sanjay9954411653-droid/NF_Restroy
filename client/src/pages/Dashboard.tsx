@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -40,6 +40,10 @@ interface DashboardData {
 
 interface RevenuePoint { date: string; revenue: number }
 interface TopItem { name: string; total_quantity: number; total_revenue: number }
+
+/** The owner's own calendar date as YYYY-MM-DD (not the server's / UTC's). */
+const localDate = (d = new Date()) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 
 const StatCard = ({
   label, value, icon: Icon, color, sub,
@@ -98,14 +102,20 @@ const Dashboard: React.FC = () => {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const { on, off } = useSocket()
+  const loadedDay = useRef(localDate()) // the day the Top Items list was last loaded for
 
   const fetchAll = useCallback(async () => {
     try {
       setError('')
+      // Top Items is for TODAY only, so the list starts fresh every day (at the owner's midnight)
+      const today = localDate()
+      loadedDay.current = today
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
+      const offset = -new Date().getTimezoneOffset() // minutes east of UTC (330 for India)
       const [dashRes, revRes, topRes] = await Promise.all([
         api.get('/reports/dashboard'),
         api.get('/reports/daily-revenue', { params: { days: 7 } }),
-        api.get('/reports/top-items', { params: { limit: 5 } }),
+        api.get('/reports/top-items', { params: { limit: 5, from: today, to: today, tz, offset } }),
       ])
       setData(dashRes.data.data)
       setRevenue(revRes.data.data || [])
@@ -119,16 +129,12 @@ const Dashboard: React.FC = () => {
 
   useEffect(() => { fetchAll() }, [fetchAll])
 
-  // Keep "today" fresh: the Top Items list starts over each day, so reload when the
-  // tab regains focus (e.g. next morning) and every 5 minutes while it stays open.
+  // Left open past midnight? Start the new day's list without needing a reload.
   useEffect(() => {
-    const onVisible = () => { if (document.visibilityState === 'visible') fetchAll() }
-    document.addEventListener('visibilitychange', onVisible)
-    const timer = window.setInterval(fetchAll, 5 * 60 * 1000)
-    return () => {
-      document.removeEventListener('visibilitychange', onVisible)
-      window.clearInterval(timer)
-    }
+    const t = setInterval(() => {
+      if (localDate() !== loadedDay.current) fetchAll()
+    }, 60_000)
+    return () => clearInterval(t)
   }, [fetchAll])
 
   useEffect(() => {
@@ -328,18 +334,14 @@ const Dashboard: React.FC = () => {
           )}
         </Card>
 
-        {/* Top items */}
-        <Card
-          hover
-          className="cursor-pointer"
-          onClick={() => navigate('/reports/top-items')}
-        >
+        {/* Top items - tap to open the full report (7 days, custom range, Excel / PDF) */}
+        <Card hover onClick={() => navigate('/reports')}>
           <div className="flex items-center justify-between mb-6">
             <div>
-              <h2 className="font-semibold text-gray-900">Top Items</h2>
-              <p className="text-xs text-gray-400 mt-0.5">Today · by quantity sold</p>
+              <h2 className="font-semibold text-gray-900">Top Items Today</h2>
+              <p className="text-xs text-gray-400 mt-0.5">By quantity sold · resets every day</p>
             </div>
-            <span className="text-xs font-medium text-brand-600 shrink-0">View all →</span>
+            <span className="text-xs font-medium text-brand-600 shrink-0">View report →</span>
           </div>
           {topItems.length > 0 ? (
             <div className="space-y-3">

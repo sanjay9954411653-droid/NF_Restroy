@@ -7,12 +7,43 @@ export class ReportsService {
     return reportsRepository.getDashboardReport(restaurantId);
   }
 
-  async getTopSellingItems(restaurantId: string, limit: number, from?: string, to?: string): Promise<TopSellingItem[]> {
-    if (from && to) {
-      const days = (Date.parse(to) - Date.parse(from)) / 86_400_000 + 1;
-      if (days > 366) throw new BadRequestError('Date range can be at most one year');
-    }
-    return reportsRepository.getTopSellingItems(restaurantId, limit, from, to);
+  async getTopSellingItems(
+    restaurantId: string,
+    limit: number,
+    range?: { from: string; to: string; tz?: string; offset?: number },
+    sort: 'quantity' | 'revenue' = 'quantity',
+  ): Promise<TopSellingItem[]> {
+    if (!range) return reportsRepository.getTopSellingItems(restaurantId, limit, undefined, sort);
+
+    // Same timezone handling as the payment-modes report
+    const LEGACY_ZONES: Record<string, string> = {
+      'Asia/Calcutta': 'Asia/Kolkata',
+      'Asia/Katmandu': 'Asia/Kathmandu',
+      'Asia/Rangoon': 'Asia/Yangon',
+      'Asia/Saigon': 'Asia/Ho_Chi_Minh',
+      'Asia/Dacca': 'Asia/Dhaka',
+      'Europe/Kiev': 'Europe/Kyiv',
+      'America/Buenos_Aires': 'America/Argentina/Buenos_Aires',
+    };
+    const requested = range.tz && /^[A-Za-z_]+(\/[A-Za-z0-9_+\-]+){0,2}$/.test(range.tz) ? range.tz : undefined;
+    const zoneCandidates = [requested, requested && LEGACY_ZONES[requested], 'Asia/Kolkata'].filter(
+      (z, i, arr): z is string => !!z && arr.indexOf(z) === i,
+    );
+
+    const days = (Date.parse(range.to) - Date.parse(range.from)) / 86_400_000 + 1;
+    if (days > 366) throw new BadRequestError('Date range can be at most one year');
+
+    return reportsRepository.getTopSellingItems(
+      restaurantId,
+      limit,
+      {
+        from: range.from,
+        to: range.to,
+        zoneCandidates,
+        offsetMinutes: range.offset ?? 330,
+      },
+      sort,
+    );
   }
 
   async getDailyRevenue(restaurantId: string, days: number): Promise<DailyRevenuePoint[]> {

@@ -89,38 +89,64 @@ export class ReportsRepository {
   }
 
   /**
-   * Best sellers by quantity. With no dates it covers today only (restaurant's
-   * local day), so the list starts fresh every day. Cancelled orders are ignored.
+   * Best sellers by quantity. Cancelled orders never count as sold.
+   * With `range`, only orders placed on those LOCAL dates count (the owner's
+   * midnight, not the server's) — used for the dashboard's "today" list.
    */
   async getTopSellingItems(
     restaurantId: string,
     limit: number,
-    from?: string,
-    to?: string,
+    range?: { from: string; to: string; zoneCandidates: string[]; offsetMinutes: number },
+    sort: 'quantity' | 'revenue' = 'quantity',
   ): Promise<TopSellingItem[]> {
+    let dateFilter = '';
+    const params: unknown[] = [restaurantId, limit];
+
+    if (range) {
+      const known = await query(
+        `SELECT name FROM pg_timezone_names WHERE name = ANY($1::text[]) LIMIT 1`,
+        [range.zoneCandidates],
+      );
+      const zone: string | undefined = known.rows[0]?.name;
+      const localDate = zone
+        ? `((o.created_at AT TIME ZONE 'UTC') AT TIME ZONE $5::text)::date`
+        : `(o.created_at + make_interval(mins => $5::int))::date`;
+      dateFilter = `AND ${localDate} BETWEEN $3::date AND $4::date`;
+      params.push(range.from, range.to, zone ?? range.offsetMinutes);
+    }
+
+    // Fixed strings only (never user input), so safe to put in the SQL
+    const orderBy =
+      sort === 'revenue'
+        ? 'total_revenue DESC, total_quantity DESC'
+        : 'total_quantity DESC, total_revenue DESC';
+
     const result = await query(
       `SELECT
          oi.menu_item_id,
          mi.name,
          SUM(oi.quantity) AS total_quantity,
-         COALESCE(SUM(oi.quantity * oi.unit_price), 0) AS total_revenue
+         COALESCE(SUM(oi.quantity * oi.unit_price), 0) AS total_revenue,
+         COALESCE(SUM(oi.weight_grams), 0) AS total_weight_grams
        FROM order_items oi
        JOIN orders o ON oi.order_id = o.id
        JOIN menu_items mi ON oi.menu_item_id = mi.id
        WHERE o.restaurant_id = $1
          AND o.status <> 'CANCELLED'
-         AND ${localDay('o.created_at')} BETWEEN COALESCE($3::date, ${todayLocal}) AND COALESCE($4::date, $3::date, ${todayLocal})
+         ${dateFilter}
        GROUP BY oi.menu_item_id, mi.name
-       ORDER BY total_quantity DESC, total_revenue DESC
+       ORDER BY ${orderBy}
        LIMIT $2`,
-      [restaurantId, limit, from ?? null, to ?? null],
+      params,
     );
 
     return result.rows.map((row) => ({
       menu_item_id: row.menu_item_id,
       name: row.name,
       total_quantity: parseInt(row.total_quantity, 10) || 0,
+
       total_revenue: parseFloat(row.total_revenue) || 0,
+      total_weight_grams: parseInt(row.total_weight_grams, 10) || 0,
     }));
   }
 
