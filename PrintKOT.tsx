@@ -21,6 +21,7 @@ import { Order, OrderItem } from '../types/order'
 import { formatDate } from '../lib/utils'
 import { formatWeight } from '../lib/weight'
 import { printHtml } from '../lib/printHtml'
+import { getConnectedPrinter, preparePrinter, printKOTRaw } from '../lib/thermalPrinter'
 
 function esc(s: string | undefined | null): string {
   if (!s) return ''
@@ -38,7 +39,7 @@ interface PrintKOTProps {
  * Programmatically print a KOT without showing a preview modal.
  * Opens a new window, writes the HTML, triggers print, closes.
  */
-export function printKOT(order: Order, items: OrderItem[], restaurantName = 'Kitchen', round?: number): void {
+function printKOTHtml(order: Order, items: OrderItem[], restaurantName = 'Kitchen', round?: number): void {
   const fmtMods = (mods?: any[]) =>
     mods && mods.length > 0
       ? `<div style="font-size:11px;font-weight:normal;color:#555;margin-top:2px;">${mods
@@ -78,16 +79,17 @@ export function printKOT(order: Order, items: OrderItem[], restaurantName = 'Kit
           font-size: 13px;
           color: #000;
           background: #fff;
-          padding: 8px;
-          width: 80mm;
+          padding: 2mm 1mm;
+          width: 72mm;
+          max-width: 100%;
         }
         .center { text-align: center; }
         .divider { border-top: 1px dashed #000; margin: 6px 0; }
         .order-num { font-size: 28px; font-weight: bold; letter-spacing: 2px; }
         table { width: 100%; border-collapse: collapse; }
         @media print {
-          @page { size: 80mm auto; margin: 4mm; }
-          body { padding: 0; }
+          @page { size: 80mm auto; margin: 0; }
+          body { padding: 0 1mm; }
         }
       </style>
     </head>
@@ -129,6 +131,24 @@ export function printKOT(order: Order, items: OrderItem[], restaurantName = 'Kit
     </body>
     </html>
   `)
+}
+
+/**
+ * Print a KOT. Goes straight to the thermal printer when it can (the first tap asks which USB
+ * printer to use); otherwise falls back to the browser print dialog.
+ */
+export function printKOT(order: Order, items: OrderItem[], restaurantName = 'Kitchen', round?: number): void {
+  preparePrinter().then(async (ready) => {
+    if (ready && getConnectedPrinter()) {
+      try {
+        await printKOTRaw(order, items, restaurantName, round)
+        return
+      } catch (err) {
+        console.warn('Direct printer failed, using the print dialog instead', err)
+      }
+    }
+    printKOTHtml(order, items, restaurantName, round)
+  })
 }
 
 /**
