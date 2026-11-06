@@ -24,6 +24,7 @@
  */
 
 import type { Order, OrderItem } from '../types/order'
+import toast from 'react-hot-toast'
 import { formatWeight } from './weight'
 import { getPrinterPrefs, paperCols } from './printerSettings'
 
@@ -220,8 +221,15 @@ export async function printRaw(data: Uint8Array): Promise<void> {
   if (active.kind === 'usb') {
     // USB printers generally want the ticket in one write; large tickets are chunked.
     const CHUNK = 4096
-    for (let i = 0; i < data.length; i += CHUNK) {
-      await active.device.transferOut(active.endpointOut, data.slice(i, i + CHUNK))
+    try {
+      for (let i = 0; i < data.length; i += CHUNK) {
+        await active.device.transferOut(active.endpointOut, data.slice(i, i + CHUNK))
+      }
+    } catch (err) {
+      // Unplugged or taken over by another program: forget it so the next print reconnects (or falls back) cleanly
+      active = null
+      reconnectTried = null
+      throw err
     }
   } else {
     const CHUNK = 180 // typical BLE write size limit
@@ -277,9 +285,9 @@ export function ensurePrinterReconnected(): Promise<void> {
   return reconnectTried
 }
 
-export function buildTestBytes(): Uint8Array {
+export function buildTestBytes(cols?: number): Uint8Array {
   const prefs = getPrinterPrefs()
-  const W = paperCols(prefs)
+  const W = cols ?? paperCols(prefs)
   const out: number[] = []
   out.push(...bytes(ESC, 0x40))
   out.push(...bytes(ESC, 0x61, 1, 'PRINTER TEST\n'))
@@ -294,6 +302,90 @@ export function buildTestBytes(): Uint8Array {
   return new Uint8Array(out)
 }
 
-export async function printTest(): Promise<void> {
-  await printRaw(buildTestBytes())
+export async function printTest(cols?: number): Promise<void> {
+  await printRaw(buildTestBytes(cols))
+}
+
+// ── Print mode + "make sure a printer is ready" ─────────────────────────────
+/**
+ * direct: send the bill / KOT straight to the USB or Bluetooth thermal printer (no print dialog).
+ * system: use the computer's own printer through the normal browser print. Set the thermal printer as the
+ *         default printer and start Chrome with --kiosk-printing for one-click printing. Chosen automatically
+ *         when the browser is not allowed to open the USB printer (typical on Windows when the printer's own
+ *         driver is installed).
+ */
+export type PrintMode = 'direct' | 'system'
+const MODE_KEY = 'print_mode'
+
+export function getPrintMode(): PrintMode {
+  try {
+    return localStorage.getItem(MODE_KEY) === 'system' ? 'system' : 'direct'
+  } catch {
+    return 'direct'
+  }
+}
+
+export function setPrintMode(mode: PrintMode): void {
+  try {
+    localStorage.setItem(MODE_KEY, mode)
+  } catch {
+    /* storage blocked: the choice just lasts until reload */
+  }
+  window.dispatchEvent(new Event('print-mode-changed'))
+}
+
+/**
+ * Make sure a printer is connected: reuse the live connection, then quietly reconnect the remembered one.
+ * With prompt=true (call it straight from a button tap) it also opens the browser's printer picker the
+ * first time. Resolves false when there is no direct printer; a picker closed without choosing throws a
+ * NotFoundError.
+ */
+export async function ensurePrinter(prompt = false): Promise<boolean> {
+  if (active) return true
+  await ensurePrinterReconnected()
+  if (active) return true
+  if (!prompt) return false
+  if (navigator.usb) await connectUSB()
+  else if (navigator.bluetooth) await connectBluetooth()
+  return !!active
+}
+
+/**
+ * Get the printer ready for a print button. Call it straight from the tap: the first time the browser asks
+ * which USB printer to use, and it remembers the answer. Never throws. Returns true when the job can go
+ * directly to the printer; false means use the normal print dialog.
+ */
+export async function preparePrinter(): Promise<boolean> {
+  if (getPrintMode() === 'system') return false
+  try {
+    return await ensurePrinter(true)
+  } catch (err: any) {
+    // NotFoundError: the picker was closed without choosing. Just use the print dialog this time.
+    if (err?.name === 'SecurityError' || err?.name === 'NetworkError') {
+      // The browser may not open this USB printer (on Windows its own driver usually owns it).
+      // Stop trying direct USB and use the computer's printer; "Try direct USB" switches it back.
+      console.warn('Direct USB printing is not available here, using the computer printer', err)
+      setPrintMode('system')
+      toast("The browser can't open this USB printer directly, so printing will use the computer's printer.", { duration: 7000 })
+    } else if (err?.name !== 'NotFoundError') {
+      console.warn('Could not connect the printer', err)
+    }
+    return false
+  }
+}
+
+// Forget a USB printer the moment it is unplugged, and pick it up again when it is plugged back in,
+// so Print never points at a dead connection.
+if (typeof navigator !== 'undefined' && navigator.usb) {
+  navigator.usb.addEventListener('disconnect', (e: Event) => {
+    const gone = (e as unknown as { device?: USBDevice }).device
+    if (active?.kind === 'usb' && (!gone || active.device === gone)) {
+      active = null
+      reconnectTried = null
+    }
+  })
+  navigator.usb.addEventListener('connect', () => {
+    reconnectTried = null
+    ensurePrinterReconnected().catch(() => {})
+  })
 }
