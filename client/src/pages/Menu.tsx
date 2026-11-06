@@ -268,12 +268,12 @@ const Menu: React.FC = () => {
         </div>
         <div className="flex gap-2 flex-wrap">
           <Button
-            variant="outline"
+            variant="primary"
             leftIcon={<ArrowsUpDownIcon className="w-4 h-4" />}
             onClick={startReorder}
             disabled={reorderMode || items.length === 0}
           >
-            Reorder
+            Rearrange Menu
           </Button>
           <Button
             variant="outline"
