@@ -13,7 +13,7 @@ import { formatWeight, ratePerKg } from './weight'
 import { calcBill } from './billing'
 import { couponApi } from './growthApi'
 import { printHtml } from './printHtml'
-import { ensurePrinterReconnected, getConnectedPrinter, printRaw } from './thermalPrinter'
+import { getConnectedPrinter, preparePrinter, printRaw } from './thermalPrinter'
 import { buildBillBytes } from './thermalBill'
 import { getPrinterPrefs, savePrinterPrefs } from './printerSettings'
 
@@ -241,12 +241,14 @@ export function buildBillDocument(data: BillData): string {
 }
 
 /**
- * Print a bill. Goes straight to the connected thermal printer (Settings →
- * Printer) when there is one; otherwise falls back to the browser print dialog.
+ * Print a bill. Goes straight to the thermal printer when it can: the first Print asks which USB
+ * printer to use (the browser remembers it), later prints just work. If the printer can't be used
+ * directly it falls back to the normal print dialog.
+ * `printerReady` is for callers that already prepared the printer (see printBill).
  */
-export async function printBillData(data: BillData): Promise<void> {
-  await ensurePrinterReconnected()
-  if (getConnectedPrinter()) {
+export async function printBillData(data: BillData, printerReady?: boolean): Promise<void> {
+  const ready = printerReady ?? (await preparePrinter())
+  if (ready && getConnectedPrinter()) {
     try {
       await printRaw(buildBillBytes(data, computeBill(data)))
       return
@@ -259,6 +261,8 @@ export async function printBillData(data: BillData): Promise<void> {
 
 /** Print the standard bill for any order id. Used by every "Print Bill / Receipt" button. */
 export async function printBill(orderId: string, tableNumber?: string): Promise<void> {
+  // Connect the printer FIRST, while the tap is still fresh: browsers only show the USB picker right after a tap.
+  const ready = await preparePrinter()
   const data = await loadBillData(orderId, tableNumber)
-  await printBillData(data)
+  await printBillData(data, ready)
 }
