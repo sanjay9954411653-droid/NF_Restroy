@@ -9,7 +9,6 @@ import type { RestaurantType } from '../config/restaurantTypes'
 import SubscriptionBanner from './SubscriptionBanner'
 import { getInitials } from '../lib/utils'
 import api from '../api'
-import { silentReconnectUSB, watchUsbPrinter } from '../lib/thermalPrinter'
 import {
   HomeIcon,
   ClipboardDocumentListIcon,
@@ -25,6 +24,7 @@ import {
   Bars3Icon,
   XMarkIcon,
   ExclamationCircleIcon,
+  PrinterIcon,
   ComputerDesktopIcon,
   QrCodeIcon,
   BuildingStorefrontIcon,
@@ -102,6 +102,7 @@ const navItems: NavItem[] = [
 
   { name: 'Users',            href: '/users',              icon: UsersIcon,                roles: ['ADMIN'], section: 'Team & Setup' },
   { name: 'Branding',         href: '/branding',           icon: SwatchIcon,               roles: ['ADMIN'] },
+  { name: 'Printer',          href: '/printer-settings',   icon: PrinterIcon },
   { name: 'Bill Settings',    href: '/bill-settings',      icon: ReceiptPercentIcon,       roles: ['ADMIN'] },
   { name: 'QR Settings',      href: '/qr-settings',        icon: QrCodeIcon,               roles: ['ADMIN'], featureKey: 'qr_ordering', restaurantTypes: NAV_TYPE_VISIBILITY['QR Settings'] },
   { name: 'Zomato',           href: '/zomato-settings',    icon: BuildingStorefrontIcon,   roles: ['ADMIN'], featureKey: 'zomato' },
@@ -144,11 +145,6 @@ interface LayoutProps {
 }
 
 const Layout: React.FC<LayoutProps> = ({ children }) => {
-  // Reconnect the receipt printer in the background, so staff never have to think about it.
-  useEffect(() => {
-    watchUsbPrinter()
-    silentReconnectUSB().catch(() => {})
-  }, [])
   const { user, logout, switchRestaurant, currentRestaurantName, setCurrentRestaurantName } = useAuth()
   const { isConnected } = useSocket()
   const { features, restaurantType } = useFeatures()

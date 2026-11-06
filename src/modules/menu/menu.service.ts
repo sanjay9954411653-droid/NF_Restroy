@@ -11,6 +11,18 @@ import {
 import { BadRequestError, ConflictError, NotFoundError } from '@/shared/errors/AppError';
 
 export class MenuService {
+  async reorder(restaurantId: string, type: 'categories' | 'items', ids: string[]): Promise<void> {
+    if (new Set(ids).size !== ids.length) {
+      throw new BadRequestError('Duplicate ids in reorder list');
+    }
+    const table = type === 'categories' ? 'menu_categories' : 'menu_items';
+    const owned = await menuRepository.countOwned(table, restaurantId, ids);
+    if (owned !== ids.length) {
+      throw new BadRequestError('Some of these do not belong to this restaurant');
+    }
+    await menuRepository.reorder(table, restaurantId, ids);
+  }
+
   validateCategoryName(name: string): string {
     const trimmed = name.trim();
     if (trimmed.length < 2 || trimmed.length > 255) {
@@ -94,7 +106,7 @@ export class MenuService {
   }
 
   async createMenuItem(restaurantId: string, payload: CreateMenuItemRequest): Promise<MenuItem> {
-    const { category_id, name, description, price, prep_time_minutes, is_vegetarian, is_active, display_order, image_url, is_featured, price_unit, piece_price } = payload;
+    const { category_id, name, description, price, prep_time_minutes, is_vegetarian, is_active, display_order, image_url, is_featured, price_unit } = payload;
     const validatedName = this.validateMenuItemName(name);
 
     const category = await this.getCategory(category_id);
@@ -118,8 +130,7 @@ export class MenuService {
       display_order,
       image_url || null,
       is_featured ?? false,
-      price_unit ?? 'PIECE',
-      (price_unit ?? 'PIECE') !== 'PIECE' ? (piece_price ?? null) : null
+      price_unit ?? 'PIECE'
     );
   }
 
@@ -182,10 +193,6 @@ export class MenuService {
     }
     if (payload.price_unit !== undefined) {
       updates.price_unit = payload.price_unit;
-      if (payload.price_unit === 'PIECE') updates.piece_price = null; // piece price only applies to by-weight items
-    }
-    if (payload.piece_price !== undefined && payload.price_unit !== 'PIECE') {
-      updates.piece_price = payload.piece_price;
     }
 
     const updated = await menuRepository.updateMenuItem(menuItemId, updates);

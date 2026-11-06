@@ -6,6 +6,9 @@ import { checkSubscription } from '@/shared/middleware/checkSubscription';
 
 const router = Router();
 
+// Save a new display order for categories or items
+router.put('/reorder', authenticate, authorize('ADMIN'), checkSubscription, (req, res, next) => menuController.reorder(req, res, next));
+
 // Read-only menu overview for authenticated users
 router.get('/', authenticate, (req, res, next) => menuController.getMenu(req, res, next));
 

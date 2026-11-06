@@ -9,11 +9,26 @@ import {
   UpdateMenuCategoryRequestSchema,
   CreateMenuItemRequestSchema,
   UpdateMenuItemRequestSchema,
+  ReorderMenuRequestSchema,
 } from './menu.types';
 import { successResponse } from '@/shared/utils/responseHandler';
 import { AuthenticatedRequest } from '@/shared/middleware/authenticate';
 
 export class MenuController {
+  async reorder(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const restaurantId = req.user?.restaurantId;
+      if (!restaurantId) {
+        throw new Error('User not associated with a restaurant');
+      }
+      const { type, ids } = ReorderMenuRequestSchema.parse(req.body);
+      await menuService.reorder(restaurantId, type, ids);
+      res.status(200).json(successResponse({ message: 'Menu order saved' }));
+    } catch (error) {
+      next(error);
+    }
+  }
+
   async getMenu(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
     try {
       const restaurantId = req.user?.restaurantId;

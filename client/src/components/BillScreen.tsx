@@ -25,7 +25,6 @@ import { PrinterIcon, CurrencyDollarIcon, XMarkIcon } from '@heroicons/react/24/
 import { calcBill } from '../lib/billing'
 import { couponApi } from '../lib/growthApi'
 import { printBillData } from '../lib/billPrint'
-import PrinterConnect from './PrinterConnect'
 
 interface RestaurantInfo {
   name: string
@@ -157,7 +156,7 @@ const BillScreen: React.FC<BillScreenProps> = ({ orderId, tableNumber, onClose, 
 
   const handlePrint = () => {
     if (!order || !restaurant) return
-    printBillData({ order, items, restaurant, tableNumber, coupon }).catch((err) => toast.error(getErrorMessage(err)))
+    printBillData({ order, items, restaurant, tableNumber, coupon })
   }
 
   if (loading) return (
@@ -431,12 +430,8 @@ const BillScreen: React.FC<BillScreenProps> = ({ orderId, tableNumber, onClose, 
         )}
       </div>
 
-      <div className="px-4 pt-3 shrink-0 border-t border-gray-200">
-        <PrinterConnect />
-      </div>
-
       {/* Action buttons */}
-      <div className="px-4 pt-3 footer-safe grid grid-cols-2 gap-3 shrink-0">
+      <div className="px-4 pt-4 footer-safe border-t border-gray-200 grid grid-cols-2 gap-3 shrink-0">
         <Button
           variant="outline"
           fullWidth

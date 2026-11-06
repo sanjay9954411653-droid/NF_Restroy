@@ -12,12 +12,9 @@ import { formatDate } from './utils'
 import { formatWeight, ratePerKg } from './weight'
 import { calcBill } from './billing'
 import { couponApi } from './growthApi'
-import toast from 'react-hot-toast'
 import { printHtml } from './printHtml'
-import {
-  ascii, bytes, ESC, GS,
-  ensurePrinter, printRaw, disconnectPrinter, isDriverBlocked, setPrintMode,
-} from './thermalPrinter'
+import { ensurePrinterReconnected, getConnectedPrinter, printRaw } from './thermalPrinter'
+import { buildBillBytes } from './thermalBill'
 
 export interface BillRestaurant {
   name: string
@@ -125,7 +122,7 @@ export async function loadBillData(orderId: string, tableNumber?: string): Promi
 
 const CSS = `
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#000;background:#fff;width:80mm;margin:0 auto;padding:6px 8px}
+body{font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#000;background:#fff;width:72mm;max-width:100%;margin:0 auto;padding:2mm 1mm}
 .c{text-align:center}
 .row{display:flex;justify-content:space-between;gap:8px;padding:2px 0}
 .row span:first-child{flex:1}
@@ -141,8 +138,8 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#000;background
 .total{font-size:15px;font-weight:700;border-top:1px solid #000;margin-top:5px;padding-top:5px}
 .qr{width:92px;height:92px;display:block;margin:4px auto}
 .foot{font-size:11px;margin-top:2px}
-@page{size:80mm auto;margin:3mm}
-@media print{body{padding:0}}
+@page{size:80mm auto;margin:0}
+@media print{body{padding:0 1mm}}
 `
 
 export function buildBillBody(data: BillData): string {
@@ -224,345 +221,22 @@ export function buildBillBody(data: BillData): string {
     </div>`
 }
 
-/** Page size follows the paper setting, so the bill fits whether the driver is 58 mm or 80 mm. */
-function billCss(): string {
-  return getBillPaperWidth() === 58
-    ? CSS.replace('width:80mm', 'width:52mm').replace('size:80mm auto', 'size:58mm auto')
-    : CSS
-}
-
 export function buildBillDocument(data: BillData): string {
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Bill ${esc(data.order.order_number)}</title><style>${billCss()}</style></head><body>${buildBillBody(data)}</body></html>`
-}
-
-// ── Direct thermal (ESC/POS) bill ────────────────────────────────────────────
-// Used when a USB / Bluetooth receipt printer is connected, so "Print Bill" prints
-// straight away instead of opening the phone's print dialog (which only offers PDF).
-
-const PAPER_KEY = 'bill_paper_width'
-export type PaperWidth = 58 | 80
-
-/** 58 mm is the common phone / OTG printer size; 80 mm is the larger counter printer. */
-export function getBillPaperWidth(): PaperWidth {
-  try { return localStorage.getItem(PAPER_KEY) === '80' ? 80 : 58 } catch { return 58 }
-}
-export function setBillPaperWidth(w: PaperWidth): void {
-  try { localStorage.setItem(PAPER_KEY, String(w)) } catch { /* ignore */ }
-}
-
-const money = (n: number) => Number(n).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-
-async function logoToPrinterBytes(url: string, maxWidth = 384): Promise<number[]> {
-  const img = new Image()
-  img.crossOrigin = 'anonymous'
-
-  await new Promise<void>((resolve, reject) => {
-    img.onload = () => resolve()
-    img.onerror = () => reject(new Error('Could not load restaurant logo'))
-    img.src = url
-  })
-
-  const scale = Math.min(1, maxWidth / img.width)
-  const width = Math.max(1, Math.floor(img.width * scale))
-  const height = Math.max(1, Math.floor(img.height * scale))
-
-  const canvas = document.createElement('canvas')
-  canvas.width = width
-  canvas.height = height
-
-  const ctx = canvas.getContext('2d')
-  if (!ctx) throw new Error('Could not process logo')
-
-  ctx.fillStyle = '#fff'
-  ctx.fillRect(0, 0, width, height)
-  ctx.drawImage(img, 0, 0, width, height)
-
-  const pixels = ctx.getImageData(0, 0, width, height).data
-  const rowBytes = Math.ceil(width / 8)
-  const raster: number[] = []
-
-  for (let y = 0; y < height; y++) {
-    for (let bx = 0; bx < rowBytes; bx++) {
-      let value = 0
-      for (let bit = 0; bit < 8; bit++) {
-        const x = bx * 8 + bit
-        if (x < width) {
-          const i = (y * width + x) * 4
-          const gray = (
-            pixels[i] * 0.299 +
-            pixels[i + 1] * 0.587 +
-            pixels[i + 2] * 0.114
-          )
-          if (gray < 160) value |= 0x80 >> bit
-        }
-      }
-      raster.push(value)
-    }
-  }
-
-  return [
-    0x1d, 0x76, 0x30, 0,
-    rowBytes & 0xff, (rowBytes >> 8) & 0xff,
-    height & 0xff, (height >> 8) & 0xff,
-    ...raster,
-    0x0a,
-  ]
-}
-
-
-/** Builds the raw ESC/POS bytes for a bill. `cols` = characters per line (32 for 58 mm, 42 for 80 mm). */
-export async function buildBillBytes(
-  data: BillData,
-  cols: number = getBillPaperWidth() === 80 ? 42 : 32,
-): Promise<Uint8Array> {
-  const { order, items, restaurant, tableNumber, coupon } = data
-  const b = computeBill(data)
-  const isParcel = order.order_type !== 'DINE_IN'
-  const W = cols
-  const out: number[] = []
-
-  const push = (...p: Array<number | string | number[]>) => {
-    out.push(...bytes(...p))
-  }
-  const align = (n: 0 | 1) => push(ESC, 0x61, n)
-  const bold = (on: boolean) => push(ESC, 0x45, on ? 1 : 0)
-  const textSize = (n: number) => push(GS, 0x21, n)
-  const wrap = (text: string, width: number): string[] => {
-    const t = ascii(text).replace(/\s+/g, ' ').trim()
-    if (!t) return []
-    const lines: string[] = []
-    let current = ''
-
-    for (const word of t.split(' ')) {
-      if (word.length > width) {
-        if (current) {
-          lines.push(current)
-          current = ''
-        }
-        for (let i = 0; i < word.length; i += width) {
-          lines.push(word.slice(i, i + width))
-        }
-      } else if ((current ? current.length + 1 : 0) + word.length > width) {
-        if (current) lines.push(current)
-        current = word
-      } else {
-        current = current ? `${current} ${word}` : word
-      }
-    }
-
-    if (current) lines.push(current)
-    return lines
-  }
-  const center = (text: string) => {
-    align(1)
-    wrap(text, W).forEach((line) => push(line + '\n'))
-    align(0)
-  }
-  const left = (text: string) => {
-    wrap(text, W).forEach((line) => push(line + '\n'))
-  }
-  const lr = (label: string, value: string) => {
-    const right = ascii(value)
-    const available = Math.max(1, W - right.length - 1)
-    const labelLines = wrap(label, available)
-    if (labelLines.length > 1) {
-      labelLines.slice(0, -1).forEach((line) => push(line + '\n'))
-    }
-    const finalLabel = (labelLines[labelLines.length - 1] || '').slice(0, available)
-    push(
-      finalLabel +
-      ' '.repeat(Math.max(1, W - finalLabel.length - right.length)) +
-      right +
-      '\n',
-    )
-  }
-  const rule = () => push('-'.repeat(W) + '\n')
-
-  const printQr = (label: string, value: string) => {
-    if (!value) return
-    const qrData = ascii(value)
-    const length = qrData.length + 3
-
-    center(label)
-    align(1)
-    push(GS, 0x28, 0x6b, 4, 0, 0x31, 0x41, 0x32, 0)
-    push(GS, 0x28, 0x6b, 3, 0, 0x31, 0x43, W >= 42 ? 6 : 5)
-    push(GS, 0x28, 0x6b, 3, 0, 0x31, 0x45, 0x31)
-    push(
-      GS, 0x28, 0x6b,
-      length & 0xff, (length >> 8) & 0xff,
-      0x31, 0x50, 0x30, qrData,
-    )
-    push(GS, 0x28, 0x6b, 3, 0, 0x31, 0x51, 0x30)
-    push('\n')
-    align(0)
-  }
-
-  push(ESC, 0x40)
-
-  // Restaurant logo (best-effort: continue printing if the image cannot load).
-  if (restaurant.logo_url) {
-    try {
-      const logo = await logoToPrinterBytes(restaurant.logo_url, W >= 42 ? 384 : 256)
-      align(1)
-      push(logo)
-      push('\n')
-      align(0)
-    } catch (err) {
-      console.warn('Could not print restaurant logo:', err)
-    }
-  }
-
-  // Restaurant header.
-  if (restaurant.show_name_in_bill) {
-    const name = ascii(restaurant.name).toUpperCase()
-    bold(true)
-    if (name.length * 2 <= W) {
-      textSize(0x11)
-      center(name)
-      textSize(0)
-    } else {
-      center(name)
-    }
-    bold(false)
-  }
-  if (restaurant.address) center(restaurant.address)
-  if (restaurant.phone) center(`Ph: ${restaurant.phone}`)
-  if (restaurant.gstin) center(`GSTIN: ${restaurant.gstin}`)
-  if (restaurant.fssai_no) center(`FSSAI: ${restaurant.fssai_no}`)
-  center(formatDate(order.created_at))
-
-  rule()
-  lr('Order #', String(order.order_number))
-  if (tableNumber) lr('Table', String(tableNumber))
-  lr('Order Type', String(order.order_type))
-  rule()
-
-  // Items.
-  lr('ITEM', 'AMOUNT')
-  for (const item of items) {
-    const unit = Number(item.unit_price || 0)
-    bold(true)
-    left(item.menu_item_name || String(item.menu_item_id))
-    bold(false)
-
-    const modifiers = (item.modifiers || [])
-      .map((modifier) => {
-        const adjustment = Number(modifier.price_adjustment || 0)
-        const name = modifier.modifier_option_name
-        return `${name}${adjustment > 0 ? ` (+${money(adjustment)})` : adjustment < 0 ? ` (-${money(Math.abs(adjustment))})` : ''}`
-      })
-      .filter(Boolean)
-      .join(', ')
-
-    if (modifiers) left(`  ${modifiers}`)
-
-    const detail = item.weight_grams
-      ? `${formatWeight(item.weight_grams)} x ${money(ratePerKg(unit, item.weight_grams))}/kg`
-      : `${item.quantity} x ${money(unit)}`
-    lr(`  ${detail}`, money(unit * item.quantity))
-  }
-
-  rule()
-  lr(`Subtotal${restaurant.tax_inclusive ? ' (incl. GST)' : ''}`, money(b.subtotal))
-  if (b.discount > 0) {
-    lr(`Discount (${restaurant.discount_percent}%)`, `-${money(b.discount)}`)
-  }
-  if (b.coupon > 0) {
-    lr(coupon.code ? `Coupon (${coupon.code})` : 'Coupon / points discount', `-${money(b.coupon)}`)
-  }
-  if (b.serviceCharge > 0) {
-    lr(`Service Charge (${restaurant.service_charge_percent}%)`, money(b.serviceCharge))
-  }
-  if (b.otherCharges > 0) {
-    lr(`Other Charges (${restaurant.other_charges_percent}%)`, money(b.otherCharges))
-  }
-  if (b.extra > 0) {
-    lr('Extra Charges', money(b.extra))
-  }
-  if (restaurant.tax_rate > 0) {
-    if (isParcel) {
-      lr(`IGST (${restaurant.tax_rate}%)`, money(b.cgst + b.sgst))
-    } else {
-      lr(`CGST (${restaurant.tax_rate / 2}%)`, money(b.cgst))
-      lr(`SGST (${restaurant.tax_rate / 2}%)`, money(b.sgst))
-    }
-  }
-
-  rule()
-  bold(true)
-  textSize(0x01)
-  center('GRAND TOTAL')
-  center(`Rs. ${money(b.grandTotal)}`)
-  textSize(0)
-  bold(false)
-  rule()
-
-  // UPI payment QR.
-  if (restaurant.upi_id) {
-    const upi = `upi://pay?pa=${restaurant.upi_id}&am=${b.grandTotal.toFixed(2)}&cu=INR`
-    printQr('Scan to Pay', upi)
-    center(restaurant.upi_id)
-    rule()
-  }
-
-  // Google Review QR and configured social links.
-  const social = (restaurant.bill_social_keys || [])
-    .map((key) => ({
-      key,
-      label: SOCIAL_LABELS[key] || key,
-      url: restaurant.social_links?.[key],
-    }))
-    .filter((entry) => !!entry.url)
-
-  const review = social.find((entry) => entry.key === 'google_review')
-  if (review?.url) {
-    printQr('Scan to Review us on Google', review.url)
-    rule()
-  }
-
-  const socialToPrint = social.filter((entry) => entry.key !== 'google_review')
-  if (socialToPrint.length) {
-    center('Follow us:')
-    socialToPrint.forEach((entry) => {
-      center(`${entry.label}:`)
-      left(entry.url)
-    })
-    rule()
-  }
-
-  center('Thank you for dining with us!')
-  if (restaurant.gstin) center('This is a computer generated bill')
-
-  push('\n\n\n\n')
-  push(GS, 0x56, 1)
-  return new Uint8Array(out)
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Bill ${esc(data.order.order_number)}</title><style>${CSS}</style></head><body>${buildBillBody(data)}</body></html>`
 }
 
 /**
- * Prints a bill. If a thermal printer is (or can silently be) connected it goes straight
- * to the printer; otherwise it falls back to the browser's print dialog.
- */
-/**
- * Prints a bill in one tap. Uses the connected / remembered receipt printer and, the very
- * first time, asks you to pick it. If there is no printer (or it fails) it falls back to
- * the browser's print dialog so a bill can always be printed.
+ * Print a bill. Goes straight to the connected thermal printer (Settings →
+ * Printer) when there is one; otherwise falls back to the browser print dialog.
  */
 export async function printBillData(data: BillData): Promise<void> {
-  try {
-    if (await ensurePrinter(true)) {
-      await printRaw(await buildBillBytes(data))
+  await ensurePrinterReconnected()
+  if (getConnectedPrinter()) {
+    try {
+      await printRaw(buildBillBytes(data, computeBill(data)))
       return
-    }
-  } catch (err: any) {
-    console.error('Direct print failed, falling back to browser print', err)
-    disconnectPrinter() // so the next print reconnects from scratch
-    if (isDriverBlocked(err)) {
-      // The OS (e.g. a Windows printer driver) owns this printer: remember that and use normal printing.
-      setPrintMode('system')
-      toast('This printer is managed by Windows, so bills will print the normal way.', { icon: '🖨️' })
-    } else {
-      toast.error(`${err?.message || 'Printer not responding'} Opening the print dialog instead.`)
+    } catch (err) {
+      console.warn('Direct printer failed, using the print dialog instead', err)
     }
   }
   await printHtml(buildBillDocument(data))

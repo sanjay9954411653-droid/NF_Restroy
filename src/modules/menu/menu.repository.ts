@@ -2,6 +2,26 @@ import { query } from '@/config/database';
 import { MenuCategory, MenuItem, MenuStats } from './menu.types';
 
 export class MenuRepository {
+  /** How many of these ids belong to the restaurant (categories or items). */
+  async countOwned(table: 'menu_categories' | 'menu_items', restaurantId: string, ids: string[]): Promise<number> {
+    const result = await query(
+      `SELECT COUNT(*)::int AS n FROM ${table} WHERE restaurant_id = $1 AND id::text = ANY($2::text[])`,
+      [restaurantId, ids]
+    );
+    return result.rows[0].n;
+  }
+
+  /** Sets display_order = 1..n following the order of `ids`, in one statement. */
+  async reorder(table: 'menu_categories' | 'menu_items', restaurantId: string, ids: string[]): Promise<void> {
+    await query(
+      `UPDATE ${table} t
+          SET display_order = v.ord::int, updated_at = NOW()
+         FROM unnest($2::text[]) WITH ORDINALITY AS v(id, ord)
+        WHERE t.id::text = v.id AND t.restaurant_id = $1`,
+      [restaurantId, ids]
+    );
+  }
+
   async createCategory(
     restaurantId: string,
     name: string,
@@ -110,21 +130,20 @@ export class MenuRepository {
     displayOrder: number,
     imageUrl: string | null = null,
     isFeatured: boolean = false,
-    priceUnit: 'PIECE' | 'KG' | '100G' = 'PIECE',
-    piecePrice: number | null = null
+    priceUnit: 'PIECE' | 'KG' | '100G' = 'PIECE'
   ): Promise<MenuItem> {
     const result = await query(
-      `INSERT INTO menu_items (restaurant_id, category_id, name, description, price, prep_time_minutes, is_vegetarian, is_active, display_order, image_url, is_featured, price_unit, piece_price)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-       RETURNING id, restaurant_id, category_id, name, description, price, prep_time_minutes, is_vegetarian, price_unit, piece_price, image_url, is_featured, is_active, display_order, created_at, updated_at`,
-      [restaurantId, categoryId, name, description, price, prepTimeMinutes, isVegetarian, isActive, displayOrder, imageUrl, isFeatured, priceUnit, piecePrice]
+      `INSERT INTO menu_items (restaurant_id, category_id, name, description, price, prep_time_minutes, is_vegetarian, is_active, display_order, image_url, is_featured, price_unit)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+       RETURNING id, restaurant_id, category_id, name, description, price, prep_time_minutes, is_vegetarian, price_unit, image_url, is_featured, is_active, display_order, created_at, updated_at`,
+      [restaurantId, categoryId, name, description, price, prepTimeMinutes, isVegetarian, isActive, displayOrder, imageUrl, isFeatured, priceUnit]
     );
     return result.rows[0];
   }
 
   async findMenuItemById(menuItemId: string): Promise<MenuItem | null> {
     const result = await query(
-      'SELECT id, restaurant_id, category_id, name, description, price, prep_time_minutes, is_vegetarian, price_unit, piece_price, image_url, is_featured, is_active, display_order, created_at, updated_at FROM menu_items WHERE id = $1 LIMIT 1',
+      'SELECT id, restaurant_id, category_id, name, description, price, prep_time_minutes, is_vegetarian, price_unit, image_url, is_featured, is_active, display_order, created_at, updated_at FROM menu_items WHERE id = $1 LIMIT 1',
       [menuItemId]
     );
     return result.rows[0] || null;
@@ -132,7 +151,7 @@ export class MenuRepository {
 
   async findMenuItemsByRestaurantId(restaurantId: string): Promise<MenuItem[]> {
     const result = await query(
-      'SELECT id, restaurant_id, category_id, name, description, price, prep_time_minutes, is_vegetarian, price_unit, piece_price, image_url, is_featured, is_active, display_order, created_at, updated_at FROM menu_items WHERE restaurant_id = $1 ORDER BY display_order ASC, name ASC',
+      'SELECT id, restaurant_id, category_id, name, description, price, prep_time_minutes, is_vegetarian, price_unit, image_url, is_featured, is_active, display_order, created_at, updated_at FROM menu_items WHERE restaurant_id = $1 ORDER BY display_order ASC, name ASC',
       [restaurantId]
     );
     return result.rows;
@@ -140,7 +159,7 @@ export class MenuRepository {
 
   async findMenuItemsByCategoryId(categoryId: string): Promise<MenuItem[]> {
     const result = await query(
-      'SELECT id, restaurant_id, category_id, name, description, price, prep_time_minutes, is_vegetarian, price_unit, piece_price, image_url, is_featured, is_active, display_order, created_at, updated_at FROM menu_items WHERE category_id = $1 ORDER BY display_order ASC, name ASC',
+      'SELECT id, restaurant_id, category_id, name, description, price, prep_time_minutes, is_vegetarian, price_unit, image_url, is_featured, is_active, display_order, created_at, updated_at FROM menu_items WHERE category_id = $1 ORDER BY display_order ASC, name ASC',
       [categoryId]
     );
     return result.rows;
@@ -160,7 +179,6 @@ export class MenuRepository {
       image_url: string | null;
       is_featured: boolean;
       price_unit: 'PIECE' | 'KG' | '100G';
-      piece_price: number | null;
     }>
   ): Promise<MenuItem | null> {
     const fields = [];
@@ -211,10 +229,6 @@ export class MenuRepository {
       fields.push(`price_unit = $${paramIndex++}`);
       values.push(updates.price_unit);
     }
-    if (updates.piece_price !== undefined) {
-      fields.push(`piece_price = $${paramIndex++}`);
-      values.push(updates.piece_price);
-    }
 
     if (fields.length === 0) {
       return this.findMenuItemById(menuItemId);
@@ -224,7 +238,7 @@ export class MenuRepository {
     values.push(menuItemId);
 
     const result = await query(
-      `UPDATE menu_items SET ${fields.join(', ')} WHERE id = $${paramIndex} RETURNING id, restaurant_id, category_id, name, description, price, prep_time_minutes, is_vegetarian, price_unit, piece_price, image_url, is_featured, is_active, display_order, created_at, updated_at`,
+      `UPDATE menu_items SET ${fields.join(', ')} WHERE id = $${paramIndex} RETURNING id, restaurant_id, category_id, name, description, price, prep_time_minutes, is_vegetarian, price_unit, image_url, is_featured, is_active, display_order, created_at, updated_at`,
       values
     );
 

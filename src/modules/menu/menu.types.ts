@@ -33,7 +33,6 @@ export const CreateMenuItemRequestSchema = z.object({
   is_active: z.boolean().default(true),
   display_order: z.number().int().min(0).default(0),
   price_unit: z.enum(['PIECE', 'KG', '100G']).default('PIECE'), // KG / 100G: price is per kg / per 100 g
-  piece_price: z.number().positive('Piece price must be greater than 0').nullable().optional(), // KG / 100G items only: also sold by the piece
   image_url: imageUrlSchema,
   is_featured: z.boolean().default(false),
 });
@@ -48,11 +47,17 @@ export const UpdateMenuItemRequestSchema = z.object({
   is_active: z.boolean().optional(),
   display_order: z.number().int().min(0).optional(),
   price_unit: z.enum(['PIECE', 'KG', '100G']).optional(),
-  piece_price: z.number().positive('Piece price must be greater than 0').nullable().optional(),
   image_url: imageUrlSchema,
   is_featured: z.boolean().optional(),
 });
 
+export const ReorderMenuRequestSchema = z.object({
+  type: z.enum(['categories', 'items']),
+  // Full list of ids in the new order (first id = shown first).
+  ids: z.array(z.string().min(1)).min(1).max(1000),
+});
+
+export type ReorderMenuRequest = z.infer<typeof ReorderMenuRequestSchema>;
 export type CreateMenuCategoryRequest = z.infer<typeof CreateMenuCategoryRequestSchema>;
 export type UpdateMenuCategoryRequest = z.infer<typeof UpdateMenuCategoryRequestSchema>;
 export type CreateMenuItemRequest = z.infer<typeof CreateMenuItemRequestSchema>;
@@ -79,7 +84,6 @@ export interface MenuItem {
   prep_time_minutes: number;
   is_vegetarian: boolean;
   price_unit: 'PIECE' | 'KG' | '100G'; // KG / 100G: `price` is per kg / per 100 g
-  piece_price?: number | null; // KG / 100G items only: price of one piece (also sold by the piece)
   image_url?: string | null;
   is_featured: boolean;
   is_active: boolean;

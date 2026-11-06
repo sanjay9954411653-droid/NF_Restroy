@@ -21,7 +21,62 @@ import {
   BookOpenIcon,
   TagIcon,
   PhotoIcon,
+  ArrowsUpDownIcon,
+  ChevronUpIcon,
+  ChevronDownIcon,
+  ChevronDoubleUpIcon,
 } from '@heroicons/react/24/outline'
+
+/** Move the element at `idx` up/down/to-top, but only among elements of the same group. */
+function moveWithin<T>(arr: T[], idx: number, dir: 'up' | 'down' | 'top', sameGroup: (x: T) => boolean): T[] {
+  const idxs = arr.map((x, i) => (sameGroup(x) ? i : -1)).filter((i) => i >= 0)
+  const pos = idxs.indexOf(idx)
+  if (pos < 0) return arr
+  const target = dir === 'up' ? pos - 1 : dir === 'down' ? pos + 1 : 0
+  if (target < 0 || target >= idxs.length || target === pos) return arr
+  const group = idxs.map((i) => arr[i])
+  const [moved] = group.splice(pos, 1)
+  group.splice(target, 0, moved)
+  const out = [...arr]
+  idxs.forEach((i, k) => { out[i] = group[k] })
+  return out
+}
+
+/** One row in reorder mode: position number, label, and big tap-friendly arrows. */
+const ReorderRow: React.FC<{
+  position: number
+  isFirst: boolean
+  isLast: boolean
+  image?: string | null
+  title: string
+  subtitle?: string
+  onMove: (dir: 'up' | 'down' | 'top') => void
+}> = ({ position, isFirst, isLast, image, title, subtitle, onMove }) => {
+  const btn = 'w-10 h-10 flex items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 active:bg-indigo-50 disabled:opacity-30'
+  return (
+    <div className="flex items-center gap-3 p-2 bg-white border border-gray-200 rounded-xl">
+      <span className="w-6 text-center text-xs font-semibold text-gray-400">{position}</span>
+      {image !== undefined && (
+        image
+          ? <img src={optimizeImageUrl(image, 120)} alt="" className="w-11 h-11 rounded-lg object-cover bg-gray-100" />
+          : <div className="w-11 h-11 rounded-lg bg-gray-100" />
+      )}
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-semibold text-gray-900 truncate">{title}</p>
+        {subtitle && <p className="text-xs text-gray-500">{subtitle}</p>}
+      </div>
+      <button className={btn} disabled={isFirst} onClick={() => onMove('top')} aria-label="Move to top">
+        <ChevronDoubleUpIcon className="w-4 h-4" />
+      </button>
+      <button className={btn} disabled={isFirst} onClick={() => onMove('up')} aria-label="Move up">
+        <ChevronUpIcon className="w-5 h-5" />
+      </button>
+      <button className={btn} disabled={isLast} onClick={() => onMove('down')} aria-label="Move down">
+        <ChevronDownIcon className="w-5 h-5" />
+      </button>
+    </div>
+  )
+}
 
 const Menu: React.FC = () => {
   const [items, setItems] = useState<MenuItem[]>([])
@@ -40,6 +95,14 @@ const Menu: React.FC = () => {
   const [catDesc, setCatDesc] = useState('')
   const [catSaving, setCatSaving] = useState(false)
   const [togglingId, setTogglingId] = useState<string | null>(null)
+
+  // Reorder mode
+  const [reorderMode, setReorderMode] = useState(false)
+  const [snapshot, setSnapshot] = useState<{ cats: MenuCategory[]; items: MenuItem[] } | null>(null)
+  const [catsDirty, setCatsDirty] = useState(false)
+  const [dirtyItemCats, setDirtyItemCats] = useState<Set<string>>(new Set())
+  const [reorderCat, setReorderCat] = useState<string>('')
+  const [savingOrder, setSavingOrder] = useState(false)
 
   const fetchAll = async () => {
     try {
@@ -71,16 +134,69 @@ const Menu: React.FC = () => {
     })
   }, [items, catFilter, availFilter, search])
 
+  // Sections follow the category order (the same order customers see).
   const grouped = useMemo(() => {
     const map: Record<string, MenuItem[]> = {}
-    filtered.forEach((item) => {
-      const cat = categories.find((c) => c.id === item.category_id)
-      const key = cat?.name || 'Uncategorized'
-      if (!map[key]) map[key] = []
-      map[key].push(item)
+    categories.forEach((c) => {
+      const list = filtered.filter((i) => i.category_id === c.id)
+      if (list.length) map[c.name] = list
     })
+    const rest = filtered.filter((i) => !categories.some((c) => c.id === i.category_id))
+    if (rest.length) map['Uncategorized'] = rest
     return map
   }, [filtered, categories])
+
+  // ── Reorder ──────────────────────────────────────────────
+  const startReorder = () => {
+    setSnapshot({ cats: categories, items })
+    setCatsDirty(false)
+    setDirtyItemCats(new Set())
+    setReorderCat(categories[0]?.id || '')
+    setSearch('')
+    setCatFilter('ALL')
+    setAvailFilter('all')
+    setReorderMode(true)
+  }
+
+  const cancelReorder = () => {
+    if (snapshot) { setCategories(snapshot.cats); setItems(snapshot.items) }
+    setReorderMode(false)
+  }
+
+  const moveCategory = (id: string, dir: 'up' | 'down' | 'top') => {
+    setCategories((prev) => moveWithin(prev, prev.findIndex((c) => c.id === id), dir, () => true))
+    setCatsDirty(true)
+  }
+
+  const moveItem = (id: string, dir: 'up' | 'down' | 'top') => {
+    const item = items.find((i) => i.id === id)
+    if (!item) return
+    setItems((prev) => moveWithin(prev, prev.findIndex((i) => i.id === id), dir, (x) => x.category_id === item.category_id))
+    setDirtyItemCats((prev) => new Set(prev).add(item.category_id))
+  }
+
+  const saveOrder = async () => {
+    setSavingOrder(true)
+    try {
+      if (catsDirty) {
+        await api.put('/menus/reorder', { type: 'categories', ids: categories.map((c) => c.id) })
+      }
+      for (const catId of dirtyItemCats) {
+        const ids = items.filter((i) => i.category_id === catId).map((i) => i.id)
+        if (ids.length) await api.put('/menus/reorder', { type: 'items', ids })
+      }
+      toast.success('Menu order saved')
+      setReorderMode(false)
+      await fetchAll()
+    } catch (err) {
+      toast.error(getErrorMessage(err))
+    } finally {
+      setSavingOrder(false)
+    }
+  }
+
+  const hasReorderChanges = catsDirty || dirtyItemCats.size > 0
+  const reorderItems = items.filter((i) => i.category_id === reorderCat)
 
   const handleDelete = async (id: string) => {
     if (!confirm('Delete this menu item?')) return
@@ -150,7 +266,15 @@ const Menu: React.FC = () => {
             {items.length} items · {categories.length} categories
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
+          <Button
+            variant="outline"
+            leftIcon={<ArrowsUpDownIcon className="w-4 h-4" />}
+            onClick={startReorder}
+            disabled={reorderMode || items.length === 0}
+          >
+            Reorder
+          </Button>
           <Button
             variant="outline"
             leftIcon={<TagIcon className="w-4 h-4" />}
@@ -168,6 +292,71 @@ const Menu: React.FC = () => {
         </div>
       </div>
 
+      {reorderMode ? (
+        <div className="space-y-5 pb-24">
+          <div className="rounded-xl bg-indigo-50 border border-indigo-100 p-3 text-sm text-indigo-800">
+            Use the arrows to move things up or down. The double arrow sends it to the top.
+            Customers see the same order. Tap <b>Save order</b> when you are done.
+          </div>
+
+          <div>
+            <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-2">Categories</h2>
+            <div className="space-y-2">
+              {categories.map((c, i) => (
+                <ReorderRow
+                  key={c.id}
+                  position={i + 1}
+                  isFirst={i === 0}
+                  isLast={i === categories.length - 1}
+                  title={c.name}
+                  subtitle={`${items.filter((x) => x.category_id === c.id).length} items`}
+                  onMove={(dir) => moveCategory(c.id, dir)}
+                />
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-2">Items in</h2>
+            <select
+              value={reorderCat}
+              onChange={(e) => setReorderCat(e.target.value)}
+              className="form-select w-full mb-3"
+            >
+              {categories.map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+            <div className="space-y-2">
+              {reorderItems.length === 0 && (
+                <p className="text-sm text-gray-400 py-4 text-center">No items in this category.</p>
+              )}
+              {reorderItems.map((it, i) => (
+                <ReorderRow
+                  key={it.id}
+                  position={i + 1}
+                  isFirst={i === 0}
+                  isLast={i === reorderItems.length - 1}
+                  image={it.image_url || null}
+                  title={it.name}
+                  subtitle={formatCurrency(it.price)}
+                  onMove={(dir) => moveItem(it.id, dir)}
+                />
+              ))}
+            </div>
+          </div>
+
+          <div className="fixed bottom-0 inset-x-0 z-30 bg-white border-t border-gray-200 p-3 flex gap-3 lg:pl-72">
+            <Button variant="outline" fullWidth onClick={cancelReorder} disabled={savingOrder}>
+              Cancel
+            </Button>
+            <Button variant="primary" fullWidth onClick={saveOrder} isLoading={savingOrder} disabled={!hasReorderChanges}>
+              Save order
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <>
       {/* Filters */}
       <Card padding="sm">
         <div className="flex flex-col sm:flex-row gap-3">
@@ -291,9 +480,6 @@ const Menu: React.FC = () => {
                       {priceUnitSuffix(item.price_unit) && (
                         <span className="text-xs font-medium text-gray-500"> {priceUnitSuffix(item.price_unit)}</span>
                       )}
-                      {priceUnitSuffix(item.price_unit) && Number(item.piece_price) > 0 && (
-                        <span className="block text-xs font-medium text-gray-500 text-right">or {formatCurrency(item.piece_price as number)} / pc</span>
-                      )}
                     </span>
                   </div>
 
@@ -338,6 +524,9 @@ const Menu: React.FC = () => {
             </div>
           </div>
         ))
+      )}
+
+        </>
       )}
 
       {/* Item form */}

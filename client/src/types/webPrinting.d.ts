@@ -8,12 +8,13 @@ interface USBDevice {
   opened: boolean
   vendorId: number
   productId: number
+  productName?: string
+  manufacturerName?: string
   configuration: { interfaces: USBInterface[] } | null
   open(): Promise<void>
   close(): Promise<void>
   selectConfiguration(configurationValue: number): Promise<void>
   claimInterface(interfaceNumber: number): Promise<void>
-  releaseInterface(interfaceNumber: number): Promise<void>
   transferOut(endpointNumber: number, data: BufferSource): Promise<{ status: string; bytesWritten: number }>
 }
 interface USBInterface {
@@ -27,7 +28,6 @@ interface USBEndpoint {
 interface USB {
   requestDevice(options: { filters: Array<Record<string, unknown>> }): Promise<USBDevice>
   getDevices(): Promise<USBDevice[]>
-  addEventListener(type: 'connect' | 'disconnect', listener: (e: { device: USBDevice }) => void): void
 }
 
 interface BluetoothRemoteGATTCharacteristic {

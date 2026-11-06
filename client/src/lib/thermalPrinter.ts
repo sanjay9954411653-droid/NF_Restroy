@@ -25,10 +25,11 @@
 
 import type { Order, OrderItem } from '../types/order'
 import { formatWeight } from './weight'
+import { getPrinterPrefs, paperCols } from './printerSettings'
 
 // ── ESC/POS byte building ────────────────────────────────────────────────────
-export const ESC = 0x1b
-export const GS = 0x1d
+const ESC = 0x1b
+const GS = 0x1d
 
 export function bytes(...parts: Array<number | string | number[]>): number[] {
   const out: number[] = []
@@ -60,7 +61,8 @@ export interface KOTOrder {
 
 /** Builds the raw bytes for one Kitchen Order Ticket. 42 chars fits an 80mm printer. */
 export function buildKOTBytes(order: KOTOrder | Order, items: OrderItem[], restaurantName = 'Kitchen', round?: number): Uint8Array {
-  const W = 42
+  const prefs = getPrinterPrefs()
+  const W = paperCols(prefs)
   const center = (s: string) => bytes(ESC, 0x61, 1, s + '\n')
   const left = (s: string) => bytes(ESC, 0x61, 0, s + '\n')
   const bold = (on: boolean) => bytes(ESC, 0x45, on ? 1 : 0)
@@ -77,7 +79,7 @@ export function buildKOTBytes(order: KOTOrder | Order, items: OrderItem[], resta
   out.push(...big(false), ...bold(false))
 
   const tableLabel = order.table?.table_number ? `TABLE ${order.table.table_number}` : ascii(order.order_type || '')
-  out.push(...center(`${tableLabel}  ·  ${ascii(order.order_source || '')}`))
+  out.push(...center(`${tableLabel}  -  ${ascii(order.order_source || '')}`))
   if (order.created_at) out.push(...center(new Date(order.created_at).toLocaleString('en-IN')))
   if (round && round > 1) {
     out.push(...bold(true), ...big(true))
@@ -104,8 +106,8 @@ export function buildKOTBytes(order: KOTOrder | Order, items: OrderItem[], resta
 
   out.push(...left(line(W)))
   out.push(...center(new Date().toLocaleTimeString('en-IN')))
-  out.push(...bytes('\n\n\n'))
-  out.push(...bytes(GS, 0x56, 1)) // partial cut
+  out.push(...bytes(prefs.autoCutter ? '\n\n\n' : '\n\n\n\n\n'))
+  if (prefs.autoCutter) out.push(...bytes(GS, 0x56, 1)) // partial cut
   return new Uint8Array(out)
 }
 
@@ -130,47 +132,18 @@ export function getConnectedPrinter(): PrinterKind | null {
 async function openUsbDevice(device: USBDevice): Promise<PrinterHandle> {
   if (!device.opened) await device.open()
   if (!device.configuration) await device.selectConfiguration(1)
-
-  // Interfaces that have an OUTPUT endpoint (the printer's data pipe). Printer class (7)
-  // goes first; some printers also list other interfaces (e.g. a driver CD-ROM) that can't be used.
-  const candidates = device.configuration!.interfaces
-    .filter((i) => i.alternate.endpoints.some((e) => e.direction === 'out'))
-    .sort((a, b) => (b.alternate.interfaceClass === 7 ? 1 : 0) - (a.alternate.interfaceClass === 7 ? 1 : 0))
-  if (candidates.length === 0) throw new Error('This USB device has no output endpoint - is it a printer?')
-
-  for (const iface of candidates) {
-    try {
-      await device.claimInterface(iface.interfaceNumber)
-    } catch {
-      // A stale claim from an earlier attempt is the usual cause: close, reopen, try once more.
-      try {
-        await device.close()
-        await device.open()
-        if (!device.configuration) await device.selectConfiguration(1)
-        await device.claimInterface(iface.interfaceNumber)
-      } catch {
-        continue // try the next interface
-      }
-    }
-    const outEp = iface.alternate.endpoints.find((e) => e.direction === 'out')!
-    return { kind: 'usb', device, endpointOut: outEp.endpointNumber }
-  }
-
-  try { await device.close() } catch { /* ignore */ }
-  throw new Error(
-    'Cannot take control of the printer. It is probably in use by another app. ' +
-    'Close any printer apps (RawBT, print plugins), unplug and re-plug the printer, then try again.',
-  )
+  // Use the printer-class (7) interface if there is one, else the first with an OUT endpoint.
+  const withOut = device.configuration!.interfaces.filter((i) => i.alternate.endpoints.some((e) => e.direction === 'out'))
+  const iface = withOut.find((i) => i.alternate.interfaceClass === 7) || withOut[0]
+  if (!iface) throw new Error('This USB device has no output endpoint — is it a printer?')
+  await device.claimInterface(iface.interfaceNumber)
+  const outEp = iface.alternate.endpoints.find((e) => e.direction === 'out')!
+  return { kind: 'usb', device, endpointOut: outEp.endpointNumber }
 }
 
 /** Shows the browser's USB device picker (must be called from a click handler). */
 export async function connectUSB(): Promise<void> {
   if (!navigator.usb) throw new Error('This browser does not support USB printing. Use Chrome.')
-  // Let go of any earlier connection first so the printer isn't claimed twice
-  if (active?.kind === 'usb') {
-    try { await active.device.close() } catch { /* ignore */ }
-    active = null
-  }
   const device = await navigator.usb.requestDevice({ filters: [] })
   active = await openUsbDevice(device)
   localStorage.setItem(USB_KEY, JSON.stringify({ vendorId: device.vendorId, productId: device.productId }))
@@ -241,71 +214,6 @@ export function disconnectPrinter(): void {
   active = null
 }
 
-const MODE_KEY = 'print_mode'
-export type PrintMode = 'direct' | 'system'
-
-/**
- * 'direct' = talk to the printer over USB/Bluetooth (phones, or printers without a Windows driver).
- * 'system' = print through the operating system's own printer (e.g. a Windows driver).
- * Switches to 'system' by itself the first time Windows refuses direct access.
- */
-export function getPrintMode(): PrintMode {
-  try { return localStorage.getItem(MODE_KEY) === 'system' ? 'system' : 'direct' } catch { return 'direct' }
-}
-export function setPrintMode(m: PrintMode): void {
-  try { localStorage.setItem(MODE_KEY, m) } catch { /* ignore */ }
-  window.dispatchEvent(new Event('print-mode-changed')) // lets open screens update
-}
-
-/** True when the OS (e.g. the Windows printer driver) is holding the device so the browser may not open it. */
-export function isDriverBlocked(err: any): boolean {
-  return err?.name === 'SecurityError' || /access denied/i.test(String(err?.message || ''))
-}
-
-/**
- * Makes sure a printer is ready with as little tapping as possible:
- * reuse the live connection -> silently reconnect a remembered printer -> (if allowed)
- * show the USB picker once. Returns false if there is no printer to use.
- */
-export async function ensurePrinter(allowPrompt: boolean): Promise<boolean> {
-  if (getPrintMode() === 'system') return false // Windows owns this printer: use normal printing
-  if (active) return true
-  if (await silentReconnectUSB()) return true
-  if (await silentReconnectBluetooth()) return true
-  if (allowPrompt && navigator.usb) {
-    try {
-      await connectUSB()
-      return true
-    } catch (err: any) {
-      if (err?.name === 'NotFoundError') return false // picker closed without choosing
-      throw err
-    }
-  }
-  return false
-}
-
-let watching = false
-/** Reconnects by itself when the cable is plugged back in, and forgets the printer when it is unplugged. */
-export function watchUsbPrinter(): void {
-  if (watching || !navigator.usb?.addEventListener) return
-  watching = true
-  navigator.usb.addEventListener('connect', () => {
-    if (!active) silentReconnectUSB().catch(() => {})
-  })
-  navigator.usb.addEventListener('disconnect', (e) => {
-    if (active?.kind === 'usb' && active.device === e.device) active = null
-  })
-}
-
-/** Prints a short test slip so you can check the printer and paper size. */
-export async function printTest(cols = 32): Promise<void> {
-  const out: number[] = []
-  out.push(...bytes(ESC, 0x40, ESC, 0x61, 1, ESC, 0x45, 1, GS, 0x21, 0x11, 'PRINTER OK\n', GS, 0x21, 0x00, ESC, 0x45, 0))
-  out.push(...bytes('-'.repeat(cols) + '\n', 'If you can read this,\n', 'bill printing will work.\n', '-'.repeat(cols) + '\n'))
-  out.push(...bytes('\n\n\n\n', GS, 0x56, 1))
-  await printRaw(new Uint8Array(out))
-}
-
 /** Sends raw ESC/POS bytes to whichever printer is currently connected. */
 export async function printRaw(data: Uint8Array): Promise<void> {
   if (!active) throw new Error('No printer connected')
@@ -328,4 +236,64 @@ export async function printRaw(data: Uint8Array): Promise<void> {
 /** Convenience: build and print a KOT in one call. */
 export async function printKOTRaw(order: KOTOrder | Order, items: OrderItem[], restaurantName?: string, round?: number): Promise<void> {
   await printRaw(buildKOTBytes(order, items, restaurantName, round))
+}
+
+
+// ── Settings-page helpers ───────────────────────────────────────────────────
+/** Name of the connected printer, for display. */
+export function getConnectedPrinterName(): string | null {
+  if (!active) return null
+  return active.kind === 'usb' ? active.device.productName || 'USB printer' : active.device.name || 'Bluetooth printer'
+}
+
+/** USB devices this site was already given permission to use (the "Available Printers" list). */
+export async function listGrantedUsb(): Promise<USBDevice[]> {
+  if (!navigator.usb) return []
+  try {
+    return await navigator.usb.getDevices()
+  } catch {
+    return []
+  }
+}
+
+/** Connect to one of the already-permitted USB devices (no picker shown). */
+export async function connectGrantedUsb(device: USBDevice): Promise<void> {
+  active = await openUsbDevice(device)
+  localStorage.setItem(USB_KEY, JSON.stringify({ vendorId: device.vendorId, productId: device.productId }))
+}
+
+let reconnectTried: Promise<void> | null = null
+/** Once per page load, quietly re-connect to the last printer so printing works after a refresh. */
+export function ensurePrinterReconnected(): Promise<void> {
+  if (active) return Promise.resolve()
+  if (!reconnectTried) {
+    reconnectTried = (async () => {
+      if (await silentReconnectUSB()) return
+      await silentReconnectBluetooth()
+    })().then(() => {
+      if (!active) reconnectTried = null // allow another try later (e.g. printer plugged in afterwards)
+    })
+  }
+  return reconnectTried
+}
+
+export function buildTestBytes(): Uint8Array {
+  const prefs = getPrinterPrefs()
+  const W = paperCols(prefs)
+  const out: number[] = []
+  out.push(...bytes(ESC, 0x40))
+  out.push(...bytes(ESC, 0x61, 1, 'PRINTER TEST\n'))
+  out.push(...bytes(ESC, 0x61, 0, '-'.repeat(W) + '\n'))
+  out.push(...bytes(`Paper: ${prefs.paperInches} inch (${W} chars)\n`))
+  out.push(...bytes(`Auto cutter: ${prefs.autoCutter ? 'Yes' : 'No'}\n`))
+  out.push(...bytes('1234567890'.repeat(5).slice(0, W) + '\n'))
+  out.push(...bytes('If the number line above is fully\nvisible, the paper size is correct.\n'))
+  out.push(...bytes('-'.repeat(W) + '\n'))
+  out.push(...bytes(prefs.autoCutter ? '\n\n\n' : '\n\n\n\n\n'))
+  if (prefs.autoCutter) out.push(...bytes(GS, 0x56, 1))
+  return new Uint8Array(out)
+}
+
+export async function printTest(): Promise<void> {
+  await printRaw(buildTestBytes())
 }
