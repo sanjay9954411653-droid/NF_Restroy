@@ -74,6 +74,9 @@ class PushService {
           await webpush.sendNotification(
             { endpoint: row.endpoint, keys: { p256dh: row.p256dh, auth: row.auth } },
             body,
+            // Deliver immediately (Android otherwise may hold it while the phone dozes)
+            // and drop it after 2 minutes so a "Call Waiter" never arrives hours late.
+            { TTL: 120, urgency: 'high' },
           );
           // eslint-disable-next-line no-console
           console.log(`Push: delivered OK to ...${tail} (role ${row.role})`);

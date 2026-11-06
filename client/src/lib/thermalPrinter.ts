@@ -241,6 +241,71 @@ export function disconnectPrinter(): void {
   active = null
 }
 
+const MODE_KEY = 'print_mode'
+export type PrintMode = 'direct' | 'system'
+
+/**
+ * 'direct' = talk to the printer over USB/Bluetooth (phones, or printers without a Windows driver).
+ * 'system' = print through the operating system's own printer (e.g. a Windows driver).
+ * Switches to 'system' by itself the first time Windows refuses direct access.
+ */
+export function getPrintMode(): PrintMode {
+  try { return localStorage.getItem(MODE_KEY) === 'system' ? 'system' : 'direct' } catch { return 'direct' }
+}
+export function setPrintMode(m: PrintMode): void {
+  try { localStorage.setItem(MODE_KEY, m) } catch { /* ignore */ }
+  window.dispatchEvent(new Event('print-mode-changed')) // lets open screens update
+}
+
+/** True when the OS (e.g. the Windows printer driver) is holding the device so the browser may not open it. */
+export function isDriverBlocked(err: any): boolean {
+  return err?.name === 'SecurityError' || /access denied/i.test(String(err?.message || ''))
+}
+
+/**
+ * Makes sure a printer is ready with as little tapping as possible:
+ * reuse the live connection -> silently reconnect a remembered printer -> (if allowed)
+ * show the USB picker once. Returns false if there is no printer to use.
+ */
+export async function ensurePrinter(allowPrompt: boolean): Promise<boolean> {
+  if (getPrintMode() === 'system') return false // Windows owns this printer: use normal printing
+  if (active) return true
+  if (await silentReconnectUSB()) return true
+  if (await silentReconnectBluetooth()) return true
+  if (allowPrompt && navigator.usb) {
+    try {
+      await connectUSB()
+      return true
+    } catch (err: any) {
+      if (err?.name === 'NotFoundError') return false // picker closed without choosing
+      throw err
+    }
+  }
+  return false
+}
+
+let watching = false
+/** Reconnects by itself when the cable is plugged back in, and forgets the printer when it is unplugged. */
+export function watchUsbPrinter(): void {
+  if (watching || !navigator.usb?.addEventListener) return
+  watching = true
+  navigator.usb.addEventListener('connect', () => {
+    if (!active) silentReconnectUSB().catch(() => {})
+  })
+  navigator.usb.addEventListener('disconnect', (e) => {
+    if (active?.kind === 'usb' && active.device === e.device) active = null
+  })
+}
+
+/** Prints a short test slip so you can check the printer and paper size. */
+export async function printTest(cols = 32): Promise<void> {
+  const out: number[] = []
+  out.push(...bytes(ESC, 0x40, ESC, 0x61, 1, ESC, 0x45, 1, GS, 0x21, 0x11, 'PRINTER OK\n', GS, 0x21, 0x00, ESC, 0x45, 0))
+  out.push(...bytes('-'.repeat(cols) + '\n', 'If you can read this,\n', 'bill printing will work.\n', '-'.repeat(cols) + '\n'))
+  out.push(...bytes('\n\n\n\n', GS, 0x56, 1))
+  await printRaw(new Uint8Array(out))
+}
+
 /** Sends raw ESC/POS bytes to whichever printer is currently connected. */
 export async function printRaw(data: Uint8Array): Promise<void> {
   if (!active) throw new Error('No printer connected')

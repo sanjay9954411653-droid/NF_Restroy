@@ -27,6 +27,7 @@ interface USBEndpoint {
 interface USB {
   requestDevice(options: { filters: Array<Record<string, unknown>> }): Promise<USBDevice>
   getDevices(): Promise<USBDevice[]>
+  addEventListener(type: 'connect' | 'disconnect', listener: (e: { device: USBDevice }) => void): void
 }
 
 interface BluetoothRemoteGATTCharacteristic {

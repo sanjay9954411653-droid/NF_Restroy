@@ -9,6 +9,7 @@ import type { RestaurantType } from '../config/restaurantTypes'
 import SubscriptionBanner from './SubscriptionBanner'
 import { getInitials } from '../lib/utils'
 import api from '../api'
+import { silentReconnectUSB, watchUsbPrinter } from '../lib/thermalPrinter'
 import {
   HomeIcon,
   ClipboardDocumentListIcon,
@@ -143,6 +144,11 @@ interface LayoutProps {
 }
 
 const Layout: React.FC<LayoutProps> = ({ children }) => {
+  // Reconnect the receipt printer in the background, so staff never have to think about it.
+  useEffect(() => {
+    watchUsbPrinter()
+    silentReconnectUSB().catch(() => {})
+  }, [])
   const { user, logout, switchRestaurant, currentRestaurantName, setCurrentRestaurantName } = useAuth()
   const { isConnected } = useSocket()
   const { features, restaurantType } = useFeatures()
