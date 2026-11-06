@@ -15,6 +15,21 @@ import { couponApi } from './growthApi'
 import { printHtml } from './printHtml'
 import { ensurePrinterReconnected, getConnectedPrinter, printRaw } from './thermalPrinter'
 import { buildBillBytes } from './thermalBill'
+import { getPrinterPrefs, savePrinterPrefs } from './printerSettings'
+
+/** Supported receipt-paper widths in millimetres. */
+export type PaperWidth = 58 | 80
+
+/** Read the paper width selected on this device. */
+export function getBillPaperWidth(): PaperWidth {
+  return getPrinterPrefs().paperInches === 2 ? 58 : 80
+}
+
+/** Save the selected paper width while preserving the other printer settings. */
+export function setBillPaperWidth(width: PaperWidth): void {
+  const prefs = getPrinterPrefs()
+  savePrinterPrefs({ ...prefs, paperInches: width === 58 ? 2 : 3 })
+}
 
 export interface BillRestaurant {
   name: string
