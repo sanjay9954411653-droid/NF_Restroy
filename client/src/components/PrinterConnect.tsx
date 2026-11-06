@@ -1,20 +1,21 @@
 /**
- * Small "connect your receipt printer" control for the bill screens.
+ * Compact receipt-printer status for the bill screens.
  *
- * Once a USB (OTG) or Bluetooth printer is connected, "Print Bill" prints straight
- * to it instead of opening the phone's print dialog (which only offers "Save as PDF").
- * The browser remembers a USB printer, so after the first time this reconnects by itself.
+ * You normally do nothing here: the first "Print Bill" asks you to pick the printer once,
+ * and after that it reconnects by itself. This row just shows the status, lets you print a
+ * test slip, and choose the paper size.
  */
 import { useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
 import { PrinterIcon } from '@heroicons/react/24/outline'
 import {
-  connectUSB,
-  connectBluetooth,
-  silentReconnectUSB,
-  silentReconnectBluetooth,
+  ensurePrinter,
   getConnectedPrinter,
   isPrinterSupported,
+  connectBluetooth,
+  printTest,
+  getPrintMode,
+  setPrintMode,
 } from '../lib/thermalPrinter'
 import type { PrinterKind } from '../lib/thermalPrinter'
 import { getBillPaperWidth, setBillPaperWidth } from '../lib/billPrint'
@@ -25,25 +26,28 @@ const PrinterConnect: React.FC = () => {
   const [busy, setBusy] = useState(false)
   const [paper, setPaper] = useState<PaperWidth>(getBillPaperWidth())
   const support = isPrinterSupported()
+  const [mode, setMode] = useState(getPrintMode())
 
   useEffect(() => {
+    const sync = () => setMode(getPrintMode())
+    window.addEventListener('print-mode-changed', sync)
+    return () => window.removeEventListener('print-mode-changed', sync)
+  }, [])
+
+  // Pick up a remembered printer without asking anything
+  useEffect(() => {
     if (printer) return
-    ;(async () => {
-      if (await silentReconnectUSB()) setPrinter('usb')
-      else if (await silentReconnectBluetooth()) setPrinter('bluetooth')
-    })()
+    ensurePrinter(false).then((ok) => { if (ok) setPrinter(getConnectedPrinter()) }).catch(() => {})
   }, [printer])
 
-  const connect = async (kind: PrinterKind) => {
+  const run = async (fn: () => Promise<void>, done?: string) => {
     setBusy(true)
     try {
-      if (kind === 'usb') await connectUSB()
-      else await connectBluetooth()
-      setPrinter(kind)
-      toast.success(`${kind === 'usb' ? 'USB' : 'Bluetooth'} printer connected`)
+      await fn()
+      setPrinter(getConnectedPrinter())
+      if (done) toast.success(done)
     } catch (err: any) {
-      // Closing the picker without choosing a device is not an error
-      if (err?.name !== 'NotFoundError') toast.error(err?.message || 'Could not connect to the printer')
+      if (err?.name !== 'NotFoundError') toast.error(err?.message || 'Printer problem')
     } finally {
       setBusy(false)
     }
@@ -52,6 +56,38 @@ const PrinterConnect: React.FC = () => {
   const changePaper = (w: PaperWidth) => {
     setPaper(w)
     setBillPaperWidth(w)
+  }
+
+  if (mode === 'system') {
+    return (
+      <div className="text-xs text-gray-500 space-y-1">
+        <p>
+          <span className="font-medium text-emerald-700">Using the Windows printer.</span>{' '}
+          For one-click printing, make it the default printer and open Chrome with{' '}
+          <code className="bg-gray-100 px-1 rounded">--kiosk-printing</code>.
+        </p>
+        <div className="flex items-center gap-2">
+          <span>Paper</span>
+          {([58, 80] as PaperWidth[]).map((w) => (
+            <button
+              key={w}
+              type="button"
+              onClick={() => changePaper(w)}
+              className={`px-2 py-1 rounded-lg font-medium ${paper === w ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-600'}`}
+            >
+              {w}mm
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={() => { setPrintMode('direct'); setMode('direct') }}
+            className="ml-auto underline text-gray-400"
+          >
+            Try direct USB
+          </button>
+        </div>
+      </div>
+    )
   }
 
   if (!support.usb && !support.bluetooth) {
@@ -66,30 +102,28 @@ const PrinterConnect: React.FC = () => {
     <div className="flex flex-wrap items-center gap-2 text-xs">
       <PrinterIcon className="w-4 h-4 text-gray-400 shrink-0" />
       {printer ? (
-        <span className="font-medium text-emerald-700">
-          {printer === 'usb' ? 'USB' : 'Bluetooth'} printer connected
-        </span>
+        <>
+          <span className="font-medium text-emerald-700">Printer ready</span>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => run(() => printTest(paper === 80 ? 42 : 32))}
+            className="px-2.5 py-1 rounded-lg bg-gray-100 text-gray-700 font-medium disabled:opacity-50"
+          >
+            Test print
+          </button>
+        </>
       ) : (
         <>
-          <span className="text-gray-500">No printer connected:</span>
-          {support.usb && (
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => connect('usb')}
-              className="px-2.5 py-1 rounded-lg bg-indigo-600 text-white font-medium disabled:opacity-50"
-            >
-              Connect USB
-            </button>
-          )}
+          <span className="text-gray-500">Tap Print Bill to connect your printer</span>
           {support.bluetooth && (
             <button
               type="button"
               disabled={busy}
-              onClick={() => connect('bluetooth')}
+              onClick={() => run(connectBluetooth, 'Bluetooth printer connected')}
               className="px-2.5 py-1 rounded-lg bg-gray-100 text-gray-700 font-medium disabled:opacity-50"
             >
-              Bluetooth
+              Use Bluetooth
             </button>
           )}
         </>
