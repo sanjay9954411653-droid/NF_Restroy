@@ -107,7 +107,18 @@ const PaymentSheet: React.FC<PaymentSheetProps> = ({ order, onClose, onPaid }) =
   const remaining = Math.max(0, total - splitTotal)
 
   const updateSplit = (id: number, updates: Partial<PaymentLine>) => {
-    setSplits((prev) => prev.map((line) => (line.id === id ? { ...line, ...updates } : line)))
+    setSplits((prev) => {
+      const next = prev.map((line) => (line.id === id ? { ...line, ...updates } : line))
+      // Autofill: when an amount is typed on any line except the last, the last
+      // line takes whatever is still left to collect. (Typing on the last line
+      // leaves the others alone and the "Remaining" figure shows what's short.)
+      const last = next[next.length - 1]
+      if ('amount' in updates && next.length > 1 && last.id !== id) {
+        const others = next.slice(0, -1).reduce((sum, l) => sum + (Number(l.amount) || 0), 0)
+        next[next.length - 1] = { ...last, amount: Math.max(0, Math.round((total - others) * 100) / 100) }
+      }
+      return next
+    })
   }
 
   const addSplit = () => {

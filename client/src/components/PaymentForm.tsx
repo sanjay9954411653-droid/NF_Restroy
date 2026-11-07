@@ -207,8 +207,8 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
     field: keyof SplitPayment,
     value: string | number
   ) => {
-    setSplitPayments((current) =>
-      current.map((payment) =>
+    setSplitPayments((current) => {
+      const next = current.map((payment) =>
         payment.id === id
           ? {
               ...payment,
@@ -216,7 +216,17 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
             }
           : payment
       )
-    )
+      // Autofill: when an amount is typed on any line except the last, the last
+      // line takes whatever is still left to collect.
+      const last = next[next.length - 1]
+      if (field === 'amount' && next.length > 1 && last.id !== id) {
+        const others = next
+          .slice(0, -1)
+          .reduce((sum, p) => sum + (Number(p.amount) || 0), 0)
+        next[next.length - 1] = { ...last, amount: Math.max(0, Math.round((balance - others) * 100) / 100) }
+      }
+      return next
+    })
   }
 
   const removeSplitPayment = (id: number) => {
