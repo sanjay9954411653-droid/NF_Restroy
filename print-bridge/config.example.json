@@ -1,0 +1,10 @@
+{
+  "server_url": "https://YOUR-APP.up.railway.app",
+  "bridge_key": "PASTE-THE-KEY-FROM-THE-WEBSITE",
+  "poll_ms": 2000,
+  "timezone": "Asia/Kolkata",
+  "printers": {
+    "KOT": { "type": "network", "host": "192.168.1.50", "port": 9100, "cols": 42, "cutter": true },
+    "BILL": { "type": "windows", "name": "TVS RP 3230", "cols": 42, "cutter": true }
+  }
+}

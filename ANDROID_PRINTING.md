@@ -1,3 +1,6 @@
+> **Using a PC instead of the Android app?** See `print-bridge/README.md` — the print bridge prints KOTs and receipts
+> to a WiFi/LAN or USB printer from any device, with no app to install.
+
 # WiFi / LAN printing with the AuraOS Android app
 
 Browsers can't talk to WiFi/LAN printers, so AuraOS ships an Android app: a thin

@@ -27,6 +27,7 @@ import type { Order, OrderItem } from '../types/order'
 import toast from 'react-hot-toast'
 import { formatWeight } from './weight'
 import { getPrinterPrefs, paperCols } from './printerSettings'
+import api from '../api'
 
 // ── ESC/POS byte building ────────────────────────────────────────────────────
 const ESC = 0x1b
@@ -113,10 +114,11 @@ export function buildKOTBytes(order: KOTOrder | Order, items: OrderItem[], resta
 }
 
 // ── Connection state (kept in memory for this tab) ──────────────────────────
-export type PrinterKind = 'usb' | 'bluetooth' | 'network'
+export type PrinterKind = 'usb' | 'bluetooth' | 'network' | 'bridge'
 type PrinterHandle =
   | { kind: 'usb'; device: USBDevice; endpointOut: number }
   | { kind: 'network'; host: string; port: number }
+  | { kind: 'bridge' }
   | { kind: 'bluetooth'; char: BluetoothRemoteGATTCharacteristic; device: BluetoothDevice }
 
 let active: PrinterHandle | null = null
@@ -142,6 +144,26 @@ function getTcpPlugin(): TcpPrinterPlugin | null {
     check: (opts) => cap.nativePromise('TcpPrinter', 'check', opts),
     print: (opts) => cap.nativePromise('TcpPrinter', 'print', opts),
   }
+}
+
+// ── Print bridge (a PC at the restaurant prints for us) ─────────────────────
+// With this on, anything printed from THIS device (receipts, manual KOT reprints) is queued on the
+// server and the restaurant's bridge program prints it. Works in any browser, no USB/Bluetooth needed.
+const BRIDGE_KEY = 'print_via_bridge'
+
+export function isUsingBridge(): boolean {
+  try { return localStorage.getItem(BRIDGE_KEY) === '1' } catch { return false }
+}
+
+export function setUseBridge(on: boolean): void {
+  try {
+    if (on) localStorage.setItem(BRIDGE_KEY, '1')
+    else localStorage.removeItem(BRIDGE_KEY)
+  } catch { /* storage blocked */ }
+  if (on) active = { kind: 'bridge' }
+  else if (active?.kind === 'bridge') active = null
+  reconnectTried = null
+  window.dispatchEvent(new Event('print-mode-changed'))
 }
 
 const NET_KEY = 'kitchen_printer_network' // { host, port }
@@ -277,13 +299,22 @@ export async function silentReconnectBluetooth(): Promise<boolean> {
 }
 
 export function disconnectPrinter(): void {
+  if (active?.kind === 'bridge') setUseBridge(false)
   if (active?.kind === 'network') forgetNetworkPrinter()
   active = null
 }
 
 /** Sends raw ESC/POS bytes to whichever printer is currently connected. */
-export async function printRaw(data: Uint8Array): Promise<void> {
+export async function printRaw(data: Uint8Array, target: 'KOT' | 'BILL' = 'BILL'): Promise<void> {
   if (!active) throw new Error('No printer connected')
+  if (active.kind === 'bridge') {
+    try {
+      await api.post('/print-bridge/jobs/raw', { target, data_base64: toBase64(data) })
+    } catch (err: any) {
+      throw new Error(err?.response?.data?.error?.message || 'Could not send the print job to the restaurant printer')
+    }
+    return
+  }
   if (active.kind === 'network') {
     const tcp = getTcpPlugin()
     if (!tcp) throw new Error('WiFi/LAN printing works only in the AuraOS Android app.')
@@ -322,7 +353,7 @@ export async function printRaw(data: Uint8Array): Promise<void> {
 
 /** Convenience: build and print a KOT in one call. */
 export async function printKOTRaw(order: KOTOrder | Order, items: OrderItem[], restaurantName?: string, round?: number): Promise<void> {
-  await printRaw(buildKOTBytes(order, items, restaurantName, round))
+  await printRaw(buildKOTBytes(order, items, restaurantName, round), 'KOT')
 }
 
 
@@ -330,6 +361,7 @@ export async function printKOTRaw(order: KOTOrder | Order, items: OrderItem[], r
 /** Name of the connected printer, for display. */
 export function getConnectedPrinterName(): string | null {
   if (!active) return null
+  if (active.kind === 'bridge') return 'Restaurant print bridge'
   if (active.kind === 'network') return `WiFi/LAN printer ${active.host}:${active.port}`
   return active.kind === 'usb' ? active.device.productName || 'USB printer' : active.device.name || 'Bluetooth printer'
 }
@@ -356,6 +388,7 @@ export function ensurePrinterReconnected(): Promise<void> {
   if (active) return Promise.resolve()
   if (!reconnectTried) {
     reconnectTried = (async () => {
+      if (isUsingBridge()) { active = { kind: 'bridge' }; return }
       if (await silentReconnectNetwork()) return
       if (await silentReconnectUSB()) return
       await silentReconnectBluetooth()

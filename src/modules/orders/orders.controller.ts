@@ -17,6 +17,7 @@ import { eventBroadcaster } from '@/shared/socket/eventBroadcaster';
 import { clearDelayAlert } from '@/shared/jobs/delayDetector';
 import { pushService } from '@/modules/push/push.service';
 import { notifyReadyMadeRound } from '@/shared/readyMadeNotify';
+import { printingService } from '@/modules/printing/printing.service';
 import { assertTableAccess, assertOrderAccess, getWaiterAccess } from '@/shared/tableAccess';
 
 export class OrdersController {
@@ -29,6 +30,10 @@ export class OrdersController {
       const payload = CreateOrderRequestSchema.parse(req.body) as CreateOrderRequest;
       await assertTableAccess(req.user, payload.table_id);
       const result = await ordersService.createOrder(restaurantId, userId, payload);
+
+      // Auto-KOT via the print bridge (before the kitchen screens are told, so nothing prints twice)
+      await printingService.enqueueUnprintedKot(result.order.id, restaurantId)
+        .catch((err) => console.error('[PrintBridge] KOT enqueue failed:', err?.message || err));
 
       // Broadcast real-time event
       eventBroadcaster?.broadcastOrderCreated({
@@ -134,6 +139,9 @@ export class OrdersController {
       const payload = AddOrderItemsRequestSchema.parse(req.body);
       const result = await ordersService.addItemsToOrder(id, restaurantId, payload.items);
 
+      await printingService.enqueueUnprintedKot(id, restaurantId)
+        .catch((err) => console.error('[PrintBridge] KOT enqueue failed:', err?.message || err));
+
       // Broadcast as an update (items added = order updated)
       eventBroadcaster?.broadcastOrderUpdated({
         order_id: result.order.id,
@@ -204,6 +212,12 @@ export class OrdersController {
       await assertOrderAccess(req.user, id);
       const payload = UpdateOrderRequestSchema.parse(req.body) as UpdateOrderRequest;
       const order = await ordersService.updateOrder(id, restaurantId, payload);
+
+      // An order that waited for acceptance (QR / online) gets its KOT when the restaurant accepts it
+      if (order.status === 'ACCEPTED' || order.status === 'PREPARING') {
+        await printingService.enqueueUnprintedKot(order.id, restaurantId)
+          .catch((err) => console.error('[PrintBridge] KOT enqueue failed:', err?.message || err));
+      }
 
       // Broadcast the right event based on new status
       const broadcastPayload = {

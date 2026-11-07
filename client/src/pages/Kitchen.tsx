@@ -150,7 +150,7 @@ const [pushBusy, setPushBusy] = useState(false)
       // This correctly handles both a brand-new order AND items added to an
       // already-in-progress table bill — either way, only the new round
       // prints, never the items that already went out.
-      if (autoPrint && getConnectedPrinter()) {
+      if (autoPrint && getConnectedPrinter() && getConnectedPrinter() !== 'bridge') {
         for (const order of active) {
           const allItems = (order.order_items || order.items || []) as any[]
           const unprinted = allItems.filter((it) => it.status !== 'CANCELLED' && !it.kot_printed_at)

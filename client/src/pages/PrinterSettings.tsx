@@ -9,6 +9,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
 import { PrinterIcon } from '@heroicons/react/24/outline'
+import api from '../api'
 import Card from '../components/Card'
 import Button from '../components/Button'
 import { getPrinterPrefs, savePrinterPrefs, PrinterPrefs } from '../lib/printerSettings'
@@ -25,6 +26,8 @@ import {
   disconnectPrinter,
   printTest,
   isPrinterSupported,
+  isUsingBridge,
+  setUseBridge,
 } from '../lib/thermalPrinter'
 
 function Choice<T extends string | number | boolean>({
@@ -50,6 +53,137 @@ function Choice<T extends string | number | boolean>({
         ))}
       </div>
     </div>
+  )
+}
+
+interface BridgeSettings {
+  enabled: boolean
+  auto_kot: boolean
+  bridge_key: string
+  bridge_online: boolean
+  recent_jobs: Array<{ id: string; target: string; kind: string; status: string; error?: string | null; created_at: string }>
+}
+
+/** Owner/admin card: turn the restaurant's print bridge on, see its key and whether it is online. */
+function BridgeCard({ onChange }: { onChange: () => void }) {
+  const [s, setS] = useState<BridgeSettings | null>(null)
+  const [denied, setDenied] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [useHere, setUseHere] = useState(isUsingBridge())
+
+  const load = useCallback(async () => {
+    try {
+      const res = await api.get('/print-bridge/settings')
+      setS(res.data.data)
+    } catch (err: any) {
+      if (err?.response?.status === 403) setDenied(true)
+    }
+  }, [])
+
+  useEffect(() => {
+    load()
+    const t = setInterval(load, 10000)
+    return () => clearInterval(t)
+  }, [load])
+
+  const save = async (patch: Partial<Pick<BridgeSettings, 'enabled' | 'auto_kot'>>) => {
+    setBusy(true)
+    try {
+      await api.put('/print-bridge/settings', patch)
+      await load()
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error?.message || 'Could not save')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const newKey = async () => {
+    if (!window.confirm('Create a new key? The bridge stops working until you paste the new key into its config.json.')) return
+    setBusy(true)
+    try {
+      await api.post('/print-bridge/settings/rotate-key')
+      await load()
+      toast.success('New key created')
+    } catch {
+      toast.error('Could not create a new key')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const toggleHere = (on: boolean) => {
+    setUseBridge(on)
+    setUseHere(on)
+    onChange()
+    toast.success(on ? 'Receipts from this device now print through the bridge' : 'This device no longer uses the bridge')
+  }
+
+  return (
+    <Card padding="md">
+      <h2 className="text-sm font-semibold text-slate-700 mb-1">Restaurant print bridge</h2>
+      <p className="text-xs text-slate-500 mb-3">
+        A PC at the restaurant prints the kitchen tickets and receipts for every device. Staff place orders from any phone or browser.
+      </p>
+
+      {denied && <p className="text-sm text-slate-500">Only the owner/admin can set up the print bridge.</p>}
+
+      {s && (
+        <>
+          <Choice label="Print bridge" value={s.enabled} onChange={(v) => save({ enabled: v })}
+            options={[{ label: 'On', value: true }, { label: 'Off', value: false }]} />
+          {s.enabled && (
+            <>
+              <Choice label="Print KOT automatically when an order is placed" value={s.auto_kot} onChange={(v) => save({ auto_kot: v })}
+                options={[{ label: 'Yes', value: true }, { label: 'No', value: false }]} />
+              <div className="flex items-center justify-between gap-4 py-3 border-b border-slate-100">
+                <span className="text-sm font-medium text-slate-700">Bridge program</span>
+                <span className={`text-sm font-semibold ${s.bridge_online ? 'text-green-600' : 'text-red-600'}`}>
+                  {s.bridge_online ? '● Online' : '● Offline — start it on the PC'}
+                </span>
+              </div>
+              <div className="py-3 border-b border-slate-100">
+                <p className="text-sm font-medium text-slate-700 mb-1">Bridge key (paste into the bridge's config.json)</p>
+                <div className="flex gap-2">
+                  <input readOnly value={s.bridge_key} onFocus={(e) => e.currentTarget.select()}
+                    className="flex-1 min-w-0 rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-xs font-mono" />
+                  <Button size="sm" variant="secondary"
+                    onClick={() => { navigator.clipboard?.writeText(s.bridge_key).then(() => toast.success('Copied')).catch(() => {}) }}>
+                    Copy
+                  </Button>
+                  <Button size="sm" variant="ghost" isLoading={busy} onClick={newKey}>New key</Button>
+                </div>
+              </div>
+              <div className="py-3">
+                <label className="flex items-start gap-2 text-sm text-slate-700">
+                  <input type="checkbox" className="mt-1" checked={useHere} onChange={(e) => toggleHere(e.target.checked)} />
+                  <span>
+                    Print receipts and KOT reprints from <b>this device</b> through the bridge
+                    <span className="block text-xs text-slate-500">Turn on for every phone/PC that presses Print Bill.</span>
+                  </span>
+                </label>
+              </div>
+              {s.recent_jobs.length > 0 && (
+                <div className="mt-1">
+                  <p className="text-xs font-semibold text-slate-600 mb-1">Recent print jobs</p>
+                  {s.recent_jobs.map((j) => (
+                    <div key={j.id} className="flex items-center justify-between text-xs py-1 border-t border-slate-100">
+                      <span className="text-slate-600">
+                        {new Date(j.created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })} · {j.target === 'KOT' ? 'Kitchen' : 'Receipt'}
+                      </span>
+                      <span className={j.status === 'PRINTED' ? 'text-green-600' : j.status === 'FAILED' ? 'text-red-600' : 'text-amber-600'}
+                        title={j.error || ''}>
+                        {j.status === 'PRINTED' ? 'Printed' : j.status === 'FAILED' ? `Failed${j.error ? ': ' + j.error.slice(0, 40) : ''}` : 'Waiting'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </>
+      )}
+    </Card>
   )
 }
 
@@ -181,6 +315,8 @@ export default function PrinterSettings() {
           </div>
         )}
       </Card>
+
+      <BridgeCard onChange={refresh} />
 
       <Card padding="md">
         <h2 className="text-sm font-semibold text-slate-700 mb-1">Print options (this device)</h2>
