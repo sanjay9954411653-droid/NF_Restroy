@@ -1,0 +1,960 @@
+diff --git a/apps/waiter/src/pages/OrderPage.tsx b/apps/waiter/src/pages/OrderPage.tsx
+index 67efc45..b05d1bb 100644
+--- a/apps/waiter/src/pages/OrderPage.tsx
++++ b/apps/waiter/src/pages/OrderPage.tsx
+@@ -39,7 +39,7 @@ const OrderPage: React.FC = () => {
+ 
+   const filtered = useMemo(() => {
+     return items.filter((item) => {
+-      const matchCat = activeCat === 'ALL' || item.category_id === activeCat
++      const matchCat = activeCat === 'ALL' || (item.category_ids?.length ? item.category_ids : [item.category_id]).includes(activeCat)
+       const matchSearch = !search || item.name.toLowerCase().includes(search.toLowerCase())
+       return matchCat && matchSearch
+     })
+diff --git a/apps/waiter/src/types/index.ts b/apps/waiter/src/types/index.ts
+index b34d39c..4225f04 100644
+--- a/apps/waiter/src/types/index.ts
++++ b/apps/waiter/src/types/index.ts
+@@ -37,11 +37,13 @@ export interface MenuCategory {
+   name: string
+   display_order: number
+   is_active: boolean
++  show_to_customers?: boolean
+ }
+ 
+ export interface MenuItem {
+   id: string
+   category_id: string
++  category_ids?: string[]   // every category the item is listed under
+   name: string
+   description?: string
+   price: number
+diff --git a/apps/website/src/app/menu/page.tsx b/apps/website/src/app/menu/page.tsx
+index fe959e5..62812db 100644
+--- a/apps/website/src/app/menu/page.tsx
++++ b/apps/website/src/app/menu/page.tsx
+@@ -20,7 +20,9 @@ export default async function MenuPage() {
+   const categories = (menu?.categories || []).filter((c) => c.is_active);
+   const items = (menu?.items || []).filter((i) => i.is_active);
+   const ordering = menu?.restaurant?.ordering_enabled !== false;
+-  const uncategorized = items.filter((i) => !categories.some((c) => c.id === i.category_id));
++  const itemCats = (i: { category_id: string | null; category_ids?: string[] }) =>
++    i.category_ids && i.category_ids.length > 0 ? i.category_ids : i.category_id ? [i.category_id] : [];
++  const uncategorized = items.filter((i) => !categories.some((c) => itemCats(i).includes(c.id)));
+ 
+   return (
+     <main className="mx-auto w-full max-w-4xl flex-1 px-6 py-12">
+@@ -37,7 +39,7 @@ export default async function MenuPage() {
+       ) : null}
+ 
+       {categories.map((cat) => {
+-        const catItems = items.filter((i) => i.category_id === cat.id);
++        const catItems = items.filter((i) => itemCats(i).includes(cat.id));
+         if (catItems.length === 0) return null;
+         return <MenuSection key={cat.id} title={cat.name} items={catItems} ordering={ordering} />;
+       })}
+diff --git a/apps/website/src/lib/api.ts b/apps/website/src/lib/api.ts
+index 908f28e..3414b6c 100644
+--- a/apps/website/src/lib/api.ts
++++ b/apps/website/src/lib/api.ts
+@@ -129,6 +129,7 @@ export interface MenuModifierGroup {
+ export interface MenuItem {
+   id: string;
+   category_id: string | null;
++  category_ids?: string[];
+   name: string;
+   description: string | null;
+   price: number;
+diff --git a/client/src/components/AddItemsModal.tsx b/client/src/components/AddItemsModal.tsx
+index 252b632..2c31b1f 100644
+--- a/client/src/components/AddItemsModal.tsx
++++ b/client/src/components/AddItemsModal.tsx
+@@ -14,6 +14,7 @@ import {
+   MagnifyingGlassIcon,
+   ShoppingCartIcon,
+ } from '@heroicons/react/24/outline'
++import { inCategory } from '../utils/menuCategories'
+ 
+ interface CartLine {
+   menu_item_id: string
+@@ -59,7 +60,7 @@ const AddItemsModal: React.FC<AddItemsModalProps> = ({ orderId, orderNumber, onC
+ 
+   const filtered = useMemo(() => {
+     return menuItems.filter((m) => {
+-      const matchCat = activeCat === 'ALL' || m.category_id === activeCat
++      const matchCat = activeCat === 'ALL' || inCategory(m, activeCat)
+       const matchSearch = !search || m.name.toLowerCase().includes(search.toLowerCase())
+       return matchCat && matchSearch
+     })
+diff --git a/client/src/components/MenuForm.tsx b/client/src/components/MenuForm.tsx
+index 8943d0c..8773a5c 100644
+--- a/client/src/components/MenuForm.tsx
++++ b/client/src/components/MenuForm.tsx
+@@ -24,7 +24,9 @@ const MenuForm: React.FC<MenuFormProps> = ({ menuItem, onClose, onSave }) => {
+   const [price, setPrice] = useState(Number(menuItem?.price) || 0);
+   const [priceUnit, setPriceUnit] = useState<'PIECE' | 'KG' | '100G'>(menuItem?.price_unit || 'PIECE');
+   const [piecePrice, setPiecePrice] = useState(menuItem?.piece_price ? String(Number(menuItem.piece_price)) : '');
+-  const [categoryId, setCategoryId] = useState(menuItem?.category_id || '');
++  const [categoryIds, setCategoryIds] = useState<string[]>(
++    menuItem?.category_ids?.length ? menuItem.category_ids : menuItem?.category_id ? [menuItem.category_id] : []
++  );
+   const [prepTime, setPrepTime] = useState(menuItem?.prep_time_minutes || 15);
+   const [isVegetarian, setIsVegetarian] = useState(menuItem?.is_vegetarian ?? false);
+   const [isActive, setIsActive] = useState(menuItem?.is_active ?? true);
+@@ -50,7 +52,7 @@ const MenuForm: React.FC<MenuFormProps> = ({ menuItem, onClose, onSave }) => {
+       setPrice(Number(menuItem.price));
+       setPriceUnit(menuItem.price_unit || 'PIECE');
+       setPiecePrice(menuItem.piece_price ? String(Number(menuItem.piece_price)) : '');
+-      setCategoryId(menuItem.category_id);
++      setCategoryIds(menuItem.category_ids?.length ? menuItem.category_ids : [menuItem.category_id]);
+       setPrepTime(menuItem.prep_time_minutes);
+       setIsVegetarian(menuItem.is_vegetarian);
+       setIsActive(menuItem.is_active);
+@@ -131,7 +133,7 @@ const MenuForm: React.FC<MenuFormProps> = ({ menuItem, onClose, onSave }) => {
+     const newErrors: Record<string, string> = {};
+     if (!name.trim()) newErrors.name = 'Name is required.';
+     if (!(price > 0)) newErrors.price = 'Price must be positive.';
+-    if (!categoryId) newErrors.categoryId = 'Category is required.';
++    if (categoryIds.length === 0) newErrors.categoryId = 'Pick at least one category.';
+     if (prepTime <= 0) newErrors.prepTime = 'Prep time must be at least 1 minute.';
+     if (imageUrl.trim() && !/^https:\/\//i.test(imageUrl.trim())) newErrors.imageUrl = 'Image link must start with https://';
+     setErrors(newErrors);
+@@ -155,7 +157,7 @@ const MenuForm: React.FC<MenuFormProps> = ({ menuItem, onClose, onSave }) => {
+     if (!validate()) return;
+ 
+     const itemData = {
+-      category_id: categoryId,
++      category_ids: categoryIds, // first one is the main category
+       name,
+       description,
+       price: Number(price),
+@@ -227,19 +229,37 @@ const MenuForm: React.FC<MenuFormProps> = ({ menuItem, onClose, onSave }) => {
+         <h2 className="text-2xl font-bold mb-4">{menuItem ? 'Edit Menu Item' : 'Create New Menu Item'}</h2>
+         <form onSubmit={handleSubmit} className="space-y-4">
+           <div>
+-            <label className="block text-sm font-medium text-gray-700">Category</label>
+-            <select
+-              value={categoryId}
+-              onChange={(e) => setCategoryId(e.target.value)}
+-              className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
+-            >
+-              <option value="">Select or create category</option>
+-              {categories.map((category) => (
+-                <option key={category.id} value={category.id}>
+-                  {category.name}
+-                </option>
+-              ))}
+-            </select>
++            <label className="block text-sm font-medium text-gray-700">Categories</label>
++            <p className="text-xs text-gray-500 mb-1">Pick one or more. The item shows under each category you tick.</p>
++            {categories.length === 0 ? (
++              <p className="text-sm text-gray-500">No categories yet. Add a category first.</p>
++            ) : (
++              <div className="mt-1 max-h-44 overflow-y-auto border border-gray-300 rounded-md divide-y divide-gray-100">
++                {categories.map((category) => {
++                  const checked = categoryIds.includes(category.id);
++                  return (
++                    <label key={category.id} className="flex items-center gap-2 px-3 py-2 text-sm cursor-pointer hover:bg-gray-50">
++                      <input
++                        type="checkbox"
++                        checked={checked}
++                        onChange={() =>
++                          setCategoryIds((prev) =>
++                            prev.includes(category.id) ? prev.filter((id) => id !== category.id) : [...prev, category.id]
++                          )
++                        }
++                        className="h-4 w-4 rounded border-gray-300"
++                      />
++                      <span className="text-gray-800">{category.name}</span>
++                      {category.show_to_customers === false && (
++                        <span className="ml-auto text-[10px] font-semibold uppercase tracking-wide bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">
++                          Staff only
++                        </span>
++                      )}
++                    </label>
++                  );
++                })}
++              </div>
++            )}
+             {errors.categoryId && <p className="text-red-500 text-sm mt-1">{errors.categoryId}</p>}
+           </div>
+           <div>
+diff --git a/client/src/components/OrderForm.tsx b/client/src/components/OrderForm.tsx
+index 1ffa09f..1ba5827 100644
+--- a/client/src/components/OrderForm.tsx
++++ b/client/src/components/OrderForm.tsx
+@@ -21,6 +21,7 @@ import {
+   PrinterIcon,
+   CheckCircleIcon,
+ } from '@heroicons/react/24/outline'
++import { inCategory } from '../utils/menuCategories'
+ 
+ interface CartLine {
+   menu_item_id: string
+@@ -128,7 +129,7 @@ const OrderForm: React.FC<OrderFormProps> = ({ order, initialTableId, onClose, o
+ 
+   const filteredMenu = useMemo(() => {
+     return menuItems.filter((m) => {
+-      const matchCat = activeCat === 'ALL' || m.category_id === activeCat
++      const matchCat = activeCat === 'ALL' || inCategory(m, activeCat)
+       const matchSearch = !search || m.name.toLowerCase().includes(search.toLowerCase())
+       return matchCat && matchSearch
+     })
+diff --git a/client/src/pages/CustomerApp.tsx b/client/src/pages/CustomerApp.tsx
+index 2fea3a9..c6854c1 100644
+--- a/client/src/pages/CustomerApp.tsx
++++ b/client/src/pages/CustomerApp.tsx
+@@ -39,6 +39,7 @@ import {
+   type OrdersView,
+   type SavedOrderLine,
+ } from '../components/CustomerMenuDrawer'
++import { inCategory, itemCategoryIds } from '../utils/menuCategories'
+ 
+ // ── Dedicated public API — no auth token, no logout interceptor ──────────────
+ const publicApi = axios.create({
+@@ -373,7 +374,7 @@ const CustomerApp: React.FC = () => {
+   // ── Filtered menu ──────────────────────────────────────────────────────────
+   const filtered = useMemo(() => {
+     return items.filter((item) => {
+-      const matchCat = selectedCategory === 'ALL' || item.category_id === selectedCategory
++      const matchCat = selectedCategory === 'ALL' || inCategory(item, selectedCategory)
+       const matchSearch = !search || item.name.toLowerCase().includes(search.toLowerCase())
+       return matchCat && matchSearch && matchesDiet(diet, item.is_vegetarian)
+     })
+@@ -395,10 +396,10 @@ const CustomerApp: React.FC = () => {
+   // Menu list grouped by category, in category order
+   const sections = useMemo(() => {
+     const result = categories
+-      .map((cat) => ({ id: cat.id, name: cat.name, list: filtered.filter((i) => i.category_id === cat.id) }))
++      .map((cat) => ({ id: cat.id, name: cat.name, list: filtered.filter((i) => inCategory(i, cat.id)) }))
+       .filter((sec) => sec.list.length > 0)
+     const known = new Set(categories.map((c) => c.id))
+-    const other = filtered.filter((i) => !known.has(i.category_id))
++    const other = filtered.filter((i) => !itemCategoryIds(i).some((id) => known.has(id)))
+     if (other.length > 0) result.push({ id: 'other', name: 'More', list: other })
+     return result
+   }, [categories, filtered])
+diff --git a/client/src/pages/Menu.tsx b/client/src/pages/Menu.tsx
+index b1a6980..473c24a 100644
+--- a/client/src/pages/Menu.tsx
++++ b/client/src/pages/Menu.tsx
+@@ -11,6 +11,7 @@ import Loading from '../components/Loading'
+ import Modal from '../components/Modal'
+ import { MenuCategory, MenuItem } from '../types/menu'
+ import { formatCurrency } from '../lib/utils'
++import { inCategory } from '../utils/menuCategories'
+ import { priceUnitSuffix } from '../lib/weight'
+ import { optimizeImageUrl } from '../lib/imageUpload'
+ import {
+@@ -107,6 +108,7 @@ const Menu: React.FC = () => {
+   const [editingCat, setEditingCat] = useState<MenuCategory | undefined>()
+   const [catName, setCatName] = useState('')
+   const [catDesc, setCatDesc] = useState('')
++  const [catShowToCustomers, setCatShowToCustomers] = useState(true)
+   const [catSaving, setCatSaving] = useState(false)
+   const [togglingId, setTogglingId] = useState<string | null>(null)
+ 
+@@ -137,7 +139,7 @@ const Menu: React.FC = () => {
+ 
+   const filtered = useMemo(() => {
+     return items.filter((item) => {
+-      const matchCat = catFilter === 'ALL' || item.category_id === catFilter
++      const matchCat = catFilter === 'ALL' || inCategory(item, catFilter)
+       const matchAvail =
+         availFilter === 'all' ||
+         (availFilter === 'available' && item.is_active) ||
+@@ -152,10 +154,10 @@ const Menu: React.FC = () => {
+   const grouped = useMemo(() => {
+     const map: Record<string, MenuItem[]> = {}
+     categories.forEach((c) => {
+-      const list = filtered.filter((i) => i.category_id === c.id)
++      const list = filtered.filter((i) => inCategory(i, c.id))
+       if (list.length) map[c.name] = list
+     })
+-    const rest = filtered.filter((i) => !categories.some((c) => c.id === i.category_id))
++    const rest = filtered.filter((i) => !categories.some((c) => inCategory(i, c.id)))
+     if (rest.length) map['Uncategorized'] = rest
+     return map
+   }, [filtered, categories])
+@@ -185,8 +187,9 @@ const Menu: React.FC = () => {
+   const moveItem = (id: string, dir: 'up' | 'down' | 'top') => {
+     const item = items.find((i) => i.id === id)
+     if (!item) return
+-    setItems((prev) => moveWithin(prev, prev.findIndex((i) => i.id === id), dir, (x) => x.category_id === item.category_id))
+-    setDirtyItemCats((prev) => new Set(prev).add(item.category_id))
++    // Items can sit in several categories: move within the category being rearranged
++    setItems((prev) => moveWithin(prev, prev.findIndex((i) => i.id === id), dir, (x) => inCategory(x, reorderCat)))
++    setDirtyItemCats((prev) => new Set(prev).add(reorderCat))
+   }
+ 
+   const saveOrder = async () => {
+@@ -196,7 +199,7 @@ const Menu: React.FC = () => {
+         await api.put('/menus/reorder', { type: 'categories', ids: categories.map((c) => c.id) })
+       }
+       for (const catId of dirtyItemCats) {
+-        const ids = items.filter((i) => i.category_id === catId).map((i) => i.id)
++        const ids = items.filter((i) => inCategory(i, catId)).map((i) => i.id)
+         if (ids.length) await api.put('/menus/reorder', { type: 'items', ids })
+       }
+       toast.success('Menu order saved')
+@@ -210,7 +213,7 @@ const Menu: React.FC = () => {
+   }
+ 
+   const hasReorderChanges = catsDirty || dirtyItemCats.size > 0
+-  const reorderItems = items.filter((i) => i.category_id === reorderCat)
++  const reorderItems = items.filter((i) => inCategory(i, reorderCat))
+ 
+   const handleDelete = async (id: string) => {
+     if (!confirm('Delete this menu item?')) return
+@@ -298,11 +301,11 @@ const Menu: React.FC = () => {
+     setCatSaving(true)
+     try {
+       if (editingCat) {
+-        const res = await api.put(`/menus/categories/${editingCat.id}`, { name: catName, description: catDesc })
++        const res = await api.put(`/menus/categories/${editingCat.id}`, { name: catName, description: catDesc, show_to_customers: catShowToCustomers })
+         setCategories((p) => p.map((c) => (c.id === editingCat.id ? res.data.data : c)))
+         toast.success('Category updated')
+       } else {
+-        const res = await api.post('/menus/categories', { name: catName, description: catDesc, display_order: categories.length + 1 })
++        const res = await api.post('/menus/categories', { name: catName, description: catDesc, display_order: categories.length + 1, show_to_customers: catShowToCustomers })
+         setCategories((p) => [...p, res.data.data])
+         toast.success('Category created')
+       }
+@@ -315,11 +318,12 @@ const Menu: React.FC = () => {
+   }
+ 
+   const handleDeleteCat = async (id: string) => {
+-    if (!confirm('Delete this category? Items in it will be uncategorized.')) return
++    if (!confirm('Delete this category? Items that are only in this category will be deleted. Items that are also in other categories stay there.')) return
+     try {
+       await api.delete(`/menus/categories/${id}`)
+       setCategories((p) => p.filter((c) => c.id !== id))
+       toast.success('Category deleted')
++      await fetchAll()
+     } catch (err) {
+       toast.error(getErrorMessage(err))
+     }
+@@ -348,7 +352,7 @@ const Menu: React.FC = () => {
+           <Button
+             variant="outline"
+             leftIcon={<TagIcon className="w-4 h-4" />}
+-            onClick={() => { setEditingCat(undefined); setCatName(''); setCatDesc(''); setCatFormOpen(true) }}
++            onClick={() => { setEditingCat(undefined); setCatName(''); setCatDesc(''); setCatShowToCustomers(true); setCatFormOpen(true) }}
+           >
+             Add Category
+           </Button>
+@@ -379,7 +383,7 @@ const Menu: React.FC = () => {
+                   isFirst={i === 0}
+                   isLast={i === categories.length - 1}
+                   title={c.name}
+-                  subtitle={`${items.filter((x) => x.category_id === c.id).length} items`}
++                  subtitle={`${items.filter((x) => inCategory(x, c.id)).length} items`}
+                   onMove={(dir) => moveCategory(c.id, dir)}
+                 />
+               ))}
+@@ -492,11 +496,16 @@ const Menu: React.FC = () => {
+             >
+               <Switch on={cat.is_active} disabled={togglingId === cat.id} onClick={() => handleToggleCat(cat)} label={`${cat.name} on/off`} />
+               <span className="font-medium text-gray-700">{cat.name}</span>
++              {cat.show_to_customers === false && (
++                <span className="text-[10px] font-semibold uppercase tracking-wide bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded" title="Hidden from customers: only on POS and staff side">
++                  Staff only
++                </span>
++              )}
+               <span className="text-gray-400 text-xs">
+-                {items.filter((i) => i.category_id === cat.id).length}
++                {items.filter((i) => inCategory(i, cat.id)).length}
+               </span>
+               <button
+-                onClick={() => { setEditingCat(cat); setCatName(cat.name); setCatDesc(cat.description || ''); setCatFormOpen(true) }}
++                onClick={() => { setEditingCat(cat); setCatName(cat.name); setCatDesc(cat.description || ''); setCatShowToCustomers(cat.show_to_customers !== false); setCatFormOpen(true) }}
+                 className="text-gray-400 hover:text-indigo-600 transition-colors"
+               >
+                 <PencilIcon className="w-3 h-3" />
+@@ -684,6 +693,17 @@ const Menu: React.FC = () => {
+             onChange={(e) => setCatDesc(e.target.value)}
+             fullWidth
+           />
++          <div className="flex items-start gap-3 rounded-lg border border-gray-200 p-3">
++            <Switch on={catShowToCustomers} onClick={() => setCatShowToCustomers((v) => !v)} label="Show to customers" />
++            <div>
++              <p className="text-sm font-medium text-gray-800">Show to customers</p>
++              <p className="text-xs text-gray-500 mt-0.5">
++                {catShowToCustomers
++                  ? 'On: shown everywhere (customer menu, website, POS and staff).'
++                  : 'Off: only on the POS and staff side. Customers never see it.'}
++              </p>
++            </div>
++          </div>
+         </form>
+       </Modal>
+     </div>
+diff --git a/client/src/types/menu.ts b/client/src/types/menu.ts
+index 68714a8..0249c00 100644
+--- a/client/src/types/menu.ts
++++ b/client/src/types/menu.ts
+@@ -5,6 +5,8 @@ export interface MenuCategory {
+   description?: string
+   display_order: number
+   is_active: boolean
++  /** true (default) = shown everywhere; false = only on the POS / staff side, never to customers */
++  show_to_customers?: boolean
+   created_at: string
+   updated_at: string
+ }
+@@ -12,7 +14,10 @@ export interface MenuCategory {
+ export interface MenuItem {
+   id: string
+   restaurant_id: string
++  /** Main category (first of category_ids) */
+   category_id: string
++  /** Every category the item is listed under */
++  category_ids?: string[]
+   name: string
+   description?: string
+   price: number
+diff --git a/client/src/utils/menuCategories.ts b/client/src/utils/menuCategories.ts
+new file mode 100644
+index 0000000..97f20f9
+--- /dev/null
++++ b/client/src/utils/menuCategories.ts
+@@ -0,0 +1,13 @@
++/**
++ * A menu item can be listed under several categories.
++ * `category_ids` holds all of them (main category first); older responses only
++ * have `category_id`, so fall back to that.
++ */
++export function itemCategoryIds(item: { category_id: string; category_ids?: string[] }): string[] {
++  return item.category_ids && item.category_ids.length > 0 ? item.category_ids : [item.category_id]
++}
++
++/** True when the item is listed under the given category. */
++export function inCategory(item: { category_id: string; category_ids?: string[] }, categoryId: string): boolean {
++  return itemCategoryIds(item).includes(categoryId)
++}
+diff --git a/migrations/046_multi_category_items.sql b/migrations/046_multi_category_items.sql
+new file mode 100644
+index 0000000..2f46e60
+--- /dev/null
++++ b/migrations/046_multi_category_items.sql
+@@ -0,0 +1,44 @@
++-- 046_multi_category_items.sql
++-- 1) A menu item can now belong to MORE THAN ONE category.
++--      menu_item_categories   (item <-> category links)
++--      menu_items.category_id stays as the item's "main" category (first one picked),
++--      so older code, reports and kitchen sections keep working.
++-- 2) Categories get a visibility switch.
++--      menu_categories.show_to_customers
++--        TRUE  (default) = shown everywhere (customer QR menu, website, POS, staff, waiter app)
++--        FALSE           = shown only on the POS / staff side (never to customers)
++-- Idempotent: safe to run more than once.
++
++CREATE TABLE IF NOT EXISTS menu_item_categories (
++    menu_item_id  UUID NOT NULL REFERENCES menu_items(id)      ON DELETE CASCADE,
++    category_id   UUID NOT NULL REFERENCES menu_categories(id) ON DELETE CASCADE,
++    restaurant_id UUID NOT NULL REFERENCES restaurants(id)     ON DELETE CASCADE,
++    created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
++    PRIMARY KEY (menu_item_id, category_id)
++);
++
++CREATE INDEX IF NOT EXISTS idx_menu_item_categories_category   ON menu_item_categories(category_id);
++CREATE INDEX IF NOT EXISTS idx_menu_item_categories_restaurant ON menu_item_categories(restaurant_id);
++
++-- Every existing item keeps its current category.
++INSERT INTO menu_item_categories (menu_item_id, category_id, restaurant_id)
++SELECT id, category_id, restaurant_id FROM menu_items
++ON CONFLICT DO NOTHING;
++
++ALTER TABLE menu_categories
++    ADD COLUMN IF NOT EXISTS show_to_customers BOOLEAN NOT NULL DEFAULT TRUE;
++
++-- Same access rules as the other tenant tables.
++DO $$ BEGIN
++  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'app_tenant') THEN
++    GRANT SELECT, INSERT, UPDATE, DELETE ON menu_item_categories TO app_tenant;
++  END IF;
++END $$;
++
++ALTER TABLE menu_item_categories ENABLE ROW LEVEL SECURITY;
++DO $$ BEGIN
++  CREATE POLICY tenant_isolation_menu_item_categories ON menu_item_categories
++    USING (restaurant_id::text = current_setting('app.restaurant_id', true))
++    WITH CHECK (restaurant_id::text = current_setting('app.restaurant_id', true));
++EXCEPTION WHEN duplicate_object THEN NULL;
++END $$;
+diff --git a/src/integrations/whatsapp/whatsapp.service.ts b/src/integrations/whatsapp/whatsapp.service.ts
+index 9d9bc81..18bdf55 100644
+--- a/src/integrations/whatsapp/whatsapp.service.ts
++++ b/src/integrations/whatsapp/whatsapp.service.ts
+@@ -175,7 +175,7 @@ export class WhatsAppService {
+     // ── Handle help / menu request ──────────────────────────────────────────
+     const isMenuRequest = /\b(menu|items|what.*have|show.*menu|list)\b/i.test(text);
+     if (isMenuRequest || text.length < 3) {
+-      const menuItems = await menuRepository.findMenuItemsByRestaurantId(restaurantId);
++      const menuItems = await menuRepository.findCustomerVisibleMenuItems(restaurantId);
+       const summary = this.buildMenuSummary(menuItems);
+       return {
+         reply: (
+@@ -188,7 +188,7 @@ export class WhatsAppService {
+     }
+ 
+     // ── Parse order ─────────────────────────────────────────────────────────
+-    const menuItems = await menuRepository.findMenuItemsByRestaurantId(restaurantId);
++    const menuItems = await menuRepository.findCustomerVisibleMenuItems(restaurantId);
+     const parsedItems = this.parseOrderText(text, menuItems);
+ 
+     if (parsedItems.length === 0) {
+diff --git a/src/modules/menu/menu.repository.ts b/src/modules/menu/menu.repository.ts
+index f0d5edb..c4b8a19 100644
+--- a/src/modules/menu/menu.repository.ts
++++ b/src/modules/menu/menu.repository.ts
+@@ -27,20 +27,21 @@ export class MenuRepository {
+     name: string,
+     description: string | null,
+     displayOrder: number,
+-    isActive: boolean
++    isActive: boolean,
++    showToCustomers: boolean = true
+   ): Promise<MenuCategory> {
+     const result = await query(
+-      `INSERT INTO menu_categories (restaurant_id, name, description, display_order, is_active)
+-       VALUES ($1, $2, $3, $4, $5)
+-       RETURNING id, restaurant_id, name, description, display_order, is_active, created_at, updated_at`,
+-      [restaurantId, name, description, displayOrder, isActive]
++      `INSERT INTO menu_categories (restaurant_id, name, description, display_order, is_active, show_to_customers)
++       VALUES ($1, $2, $3, $4, $5, $6)
++       RETURNING id, restaurant_id, name, description, display_order, is_active, show_to_customers, created_at, updated_at`,
++      [restaurantId, name, description, displayOrder, isActive, showToCustomers]
+     );
+     return result.rows[0];
+   }
+ 
+   async findCategoryById(categoryId: string): Promise<MenuCategory | null> {
+     const result = await query(
+-      'SELECT id, restaurant_id, name, description, display_order, is_active, created_at, updated_at FROM menu_categories WHERE id = $1 LIMIT 1',
++      'SELECT id, restaurant_id, name, description, display_order, is_active, show_to_customers, created_at, updated_at FROM menu_categories WHERE id = $1 LIMIT 1',
+       [categoryId]
+     );
+     return result.rows[0] || null;
+@@ -48,7 +49,7 @@ export class MenuRepository {
+ 
+   async findCategoriesByRestaurantId(restaurantId: string): Promise<MenuCategory[]> {
+     const result = await query(
+-      'SELECT id, restaurant_id, name, description, display_order, is_active, created_at, updated_at FROM menu_categories WHERE restaurant_id = $1 ORDER BY display_order ASC, name ASC',
++      'SELECT id, restaurant_id, name, description, display_order, is_active, show_to_customers, created_at, updated_at FROM menu_categories WHERE restaurant_id = $1 ORDER BY display_order ASC, name ASC',
+       [restaurantId]
+     );
+     return result.rows;
+@@ -61,6 +62,7 @@ export class MenuRepository {
+       description: string | null;
+       display_order: number;
+       is_active: boolean;
++      show_to_customers: boolean;
+     }>
+   ): Promise<MenuCategory | null> {
+     const fields = [];
+@@ -83,6 +85,10 @@ export class MenuRepository {
+       fields.push(`is_active = $${paramIndex++}`);
+       values.push(updates.is_active);
+     }
++    if (updates.show_to_customers !== undefined) {
++      fields.push(`show_to_customers = $${paramIndex++}`);
++      values.push(updates.show_to_customers);
++    }
+ 
+     if (fields.length === 0) {
+       return this.findCategoryById(categoryId);
+@@ -92,7 +98,7 @@ export class MenuRepository {
+     values.push(categoryId);
+ 
+     const result = await query(
+-      `UPDATE menu_categories SET ${fields.join(', ')} WHERE id = $${paramIndex} RETURNING id, restaurant_id, name, description, display_order, is_active, created_at, updated_at`,
++      `UPDATE menu_categories SET ${fields.join(', ')} WHERE id = $${paramIndex} RETURNING id, restaurant_id, name, description, display_order, is_active, show_to_customers, created_at, updated_at`,
+       values
+     );
+ 
+@@ -100,6 +106,20 @@ export class MenuRepository {
+   }
+ 
+   async deleteCategory(categoryId: string): Promise<boolean> {
++    // Items whose MAIN category is this one but that also live in another category
++    // move their main category over, so deleting this category doesn't delete them.
++    // (Items that are only in this category are removed, as before.)
++    await query(
++      `UPDATE menu_items mi
++          SET category_id = (
++                SELECT mic.category_id FROM menu_item_categories mic
++                 WHERE mic.menu_item_id = mi.id AND mic.category_id <> $1
++                 ORDER BY mic.created_at, mic.category_id LIMIT 1)
++        WHERE mi.category_id = $1
++          AND EXISTS (SELECT 1 FROM menu_item_categories mic
++                       WHERE mic.menu_item_id = mi.id AND mic.category_id <> $1)`,
++      [categoryId]
++    );
+     const result = await query('DELETE FROM menu_categories WHERE id = $1', [categoryId]);
+     return (result.rowCount ?? 0) > 0;
+   }
+@@ -140,7 +160,60 @@ export class MenuRepository {
+        RETURNING id, restaurant_id, category_id, name, description, price, prep_time_minutes, is_vegetarian, price_unit, image_url, is_featured, skip_kitchen, ready_in_stock, is_active, display_order, created_at, updated_at`,
+       [restaurantId, categoryId, name, description, price, prepTimeMinutes, isVegetarian, isActive, displayOrder, imageUrl, isFeatured, priceUnit, skipKitchen, readyInStock]
+     );
+-    return result.rows[0];
++    const created: MenuItem = result.rows[0];
++    created.category_ids = [created.category_id];
++    return created;
++  }
++
++  /** Adds `category_ids` (every category the item is listed under) to each item. */
++  async attachCategoryIds<T extends { id: string; category_id: string }>(items: T[]): Promise<(T & { category_ids: string[] })[]> {
++    if (items.length === 0) return [];
++    const result = await query(
++      `SELECT menu_item_id, category_id FROM menu_item_categories
++        WHERE menu_item_id = ANY($1::uuid[])
++        ORDER BY created_at, category_id`,
++      [items.map((i) => i.id)]
++    );
++    const byItem = new Map<string, string[]>();
++    for (const row of result.rows) {
++      const list = byItem.get(row.menu_item_id) ?? [];
++      list.push(row.category_id);
++      byItem.set(row.menu_item_id, list);
++    }
++    return items.map((item) => {
++      const ids = byItem.get(item.id) ?? [];
++      // main category first; fall back to it if the link table has nothing yet
++      const ordered = [item.category_id, ...ids.filter((id) => id !== item.category_id)];
++      return { ...item, category_ids: ordered };
++    });
++  }
++
++  /** Replaces the item's category links. The first id becomes the main category. */
++  async setItemCategories(menuItemId: string, restaurantId: string, categoryIds: string[]): Promise<void> {
++    await query(
++      `DELETE FROM menu_item_categories WHERE menu_item_id = $1::uuid AND category_id <> ALL($2::uuid[])`,
++      [menuItemId, categoryIds]
++    );
++    await query(
++      `INSERT INTO menu_item_categories (menu_item_id, category_id, restaurant_id)
++       SELECT $1::uuid, c, $3::uuid FROM unnest($2::uuid[]) AS c
++       ON CONFLICT DO NOTHING`,
++      [menuItemId, categoryIds, restaurantId]
++    );
++    await query(`UPDATE menu_items SET category_id = $2::uuid, updated_at = CURRENT_TIMESTAMP WHERE id = $1::uuid`, [menuItemId, categoryIds[0]]);
++  }
++
++  /** True when at least one category of the item is switched on AND shown to customers. */
++  async isItemVisibleToCustomers(menuItemId: string): Promise<boolean> {
++    const result = await query(
++      `SELECT 1
++         FROM menu_item_categories mic
++         JOIN menu_categories c ON c.id = mic.category_id
++        WHERE mic.menu_item_id = $1 AND c.is_active = TRUE AND c.show_to_customers = TRUE
++        LIMIT 1`,
++      [menuItemId]
++    );
++    return result.rows.length > 0;
+   }
+ 
+   async findMenuItemById(menuItemId: string): Promise<MenuItem | null> {
+@@ -148,7 +221,8 @@ export class MenuRepository {
+       'SELECT id, restaurant_id, category_id, name, description, price, prep_time_minutes, is_vegetarian, price_unit, image_url, is_featured, skip_kitchen, ready_in_stock, is_active, display_order, created_at, updated_at FROM menu_items WHERE id = $1 LIMIT 1',
+       [menuItemId]
+     );
+-    return result.rows[0] || null;
++    if (!result.rows[0]) return null;
++    return (await this.attachCategoryIds([result.rows[0]]))[0] as MenuItem;
+   }
+ 
+   async findMenuItemsByRestaurantId(restaurantId: string): Promise<MenuItem[]> {
+@@ -156,15 +230,25 @@ export class MenuRepository {
+       'SELECT id, restaurant_id, category_id, name, description, price, prep_time_minutes, is_vegetarian, price_unit, image_url, is_featured, skip_kitchen, ready_in_stock, is_active, display_order, created_at, updated_at FROM menu_items WHERE restaurant_id = $1 ORDER BY display_order ASC, name ASC',
+       [restaurantId]
+     );
+-    return result.rows;
++    return (await this.attachCategoryIds(result.rows)) as MenuItem[];
++  }
++
++  /** Active items that sit in at least one switched-on category shown to customers (WhatsApp, etc.). */
++  async findCustomerVisibleMenuItems(restaurantId: string): Promise<MenuItem[]> {
++    const [categories, items] = await Promise.all([
++      this.findCategoriesByRestaurantId(restaurantId),
++      this.findMenuItemsByRestaurantId(restaurantId),
++    ]);
++    const visible = new Set(categories.filter((c) => c.is_active && c.show_to_customers).map((c) => c.id));
++    return items.filter((i) => i.is_active && i.category_ids.some((id) => visible.has(id)));
+   }
+ 
+   async findMenuItemsByCategoryId(categoryId: string): Promise<MenuItem[]> {
+     const result = await query(
+-      'SELECT id, restaurant_id, category_id, name, description, price, prep_time_minutes, is_vegetarian, price_unit, image_url, is_featured, skip_kitchen, ready_in_stock, is_active, display_order, created_at, updated_at FROM menu_items WHERE category_id = $1 ORDER BY display_order ASC, name ASC',
++      'SELECT id, restaurant_id, category_id, name, description, price, prep_time_minutes, is_vegetarian, price_unit, image_url, is_featured, skip_kitchen, ready_in_stock, is_active, display_order, created_at, updated_at FROM menu_items WHERE id IN (SELECT menu_item_id FROM menu_item_categories WHERE category_id = $1) ORDER BY display_order ASC, name ASC',
+       [categoryId]
+     );
+-    return result.rows;
++    return (await this.attachCategoryIds(result.rows)) as MenuItem[];
+   }
+ 
+   async updateMenuItem(
+@@ -254,7 +338,8 @@ export class MenuRepository {
+       values
+     );
+ 
+-    return result.rows[0] || null;
++    if (!result.rows[0]) return null;
++    return (await this.attachCategoryIds([result.rows[0]]))[0] as MenuItem;
+   }
+ 
+   async deleteMenuItem(menuItemId: string): Promise<boolean> {
+@@ -284,7 +369,8 @@ export class MenuRepository {
+         COUNT(DISTINCT i.id) as total_items,
+         COUNT(DISTINCT CASE WHEN i.is_active THEN i.id END) as active_items
+        FROM menu_categories c
+-       LEFT JOIN menu_items i ON i.category_id = c.id
++       LEFT JOIN menu_item_categories mic ON mic.category_id = c.id
++       LEFT JOIN menu_items i ON i.id = mic.menu_item_id
+        WHERE c.restaurant_id = $1`,
+       [restaurantId]
+     );
+diff --git a/src/modules/menu/menu.service.ts b/src/modules/menu/menu.service.ts
+index 3d4bcfe..cf03206 100644
+--- a/src/modules/menu/menu.service.ts
++++ b/src/modules/menu/menu.service.ts
+@@ -40,14 +40,14 @@ export class MenuService {
+   }
+ 
+   async createCategory(restaurantId: string, payload: CreateMenuCategoryRequest): Promise<MenuCategory> {
+-    const { name, description, display_order, is_active } = payload;
++    const { name, description, display_order, is_active, show_to_customers } = payload;
+     const validatedName = this.validateCategoryName(name);
+ 
+     if (await menuRepository.categoryNameExists(restaurantId, validatedName)) {
+       throw new ConflictError('Menu category name already exists for this restaurant');
+     }
+ 
+-    return menuRepository.createCategory(restaurantId, validatedName, description ?? null, display_order, is_active);
++    return menuRepository.createCategory(restaurantId, validatedName, description ?? null, display_order, is_active, show_to_customers ?? true);
+   }
+ 
+   async getCategory(categoryId: string): Promise<MenuCategory> {
+@@ -85,6 +85,9 @@ export class MenuService {
+     if (payload.is_active !== undefined) {
+       updates.is_active = payload.is_active;
+     }
++    if (payload.show_to_customers !== undefined) {
++      updates.show_to_customers = payload.show_to_customers;
++    }
+ 
+     const updated = await menuRepository.updateCategory(categoryId, updates);
+     if (!updated) {
+@@ -105,22 +108,35 @@ export class MenuService {
+     }
+   }
+ 
++  /** category_ids (new) or category_id (old clients) -> unique list; first = main category. */
++  private async resolveCategoryIds(restaurantId: string, ids: string[]): Promise<string[]> {
++    const unique = Array.from(new Set(ids));
++    if (unique.length === 0) {
++      throw new BadRequestError('Pick at least one category');
++    }
++    const owned = await menuRepository.countOwned('menu_categories', restaurantId, unique);
++    if (owned !== unique.length) {
++      throw new BadRequestError('Menu category does not belong to this restaurant');
++    }
++    return unique;
++  }
++
+   async createMenuItem(restaurantId: string, payload: CreateMenuItemRequest): Promise<MenuItem> {
+-    const { category_id, name, description, price, prep_time_minutes, is_vegetarian, is_active, display_order, image_url, is_featured, price_unit, skip_kitchen, ready_in_stock } = payload;
++    const { name, description, price, prep_time_minutes, is_vegetarian, is_active, display_order, image_url, is_featured, price_unit, skip_kitchen, ready_in_stock } = payload;
+     const validatedName = this.validateMenuItemName(name);
+ 
+-    const category = await this.getCategory(category_id);
+-    if (category.restaurant_id !== restaurantId) {
+-      throw new BadRequestError('Menu category does not belong to this restaurant');
+-    }
++    const categoryIds = await this.resolveCategoryIds(
++      restaurantId,
++      payload.category_ids ?? (payload.category_id ? [payload.category_id] : [])
++    );
+ 
+     if (await menuRepository.menuItemNameExists(restaurantId, validatedName)) {
+       throw new ConflictError('Menu item name already exists for this restaurant');
+     }
+ 
+-    return menuRepository.createMenuItem(
++    const created = await menuRepository.createMenuItem(
+       restaurantId,
+-      category_id,
++      categoryIds[0],
+       validatedName,
+       description ?? null,
+       price,
+@@ -134,6 +150,8 @@ export class MenuService {
+       skip_kitchen ?? false,
+       ready_in_stock ?? true
+     );
++    await menuRepository.setItemCategories(created.id, restaurantId, categoryIds);
++    return this.getMenuItem(created.id);
+   }
+ 
+   async getMenuItem(menuItemId: string): Promise<MenuItem> {
+@@ -155,12 +173,12 @@ export class MenuService {
+     }
+ 
+     const updates: any = {};
+-    if (payload.category_id !== undefined) {
+-      const category = await this.getCategory(payload.category_id);
+-      if (category.restaurant_id !== restaurantId) {
+-        throw new BadRequestError('Menu category does not belong to this restaurant');
+-      }
+-      updates.category_id = payload.category_id;
++    let newCategoryIds: string[] | null = null;
++    if (payload.category_ids !== undefined || payload.category_id !== undefined) {
++      newCategoryIds = await this.resolveCategoryIds(
++        restaurantId,
++        payload.category_ids ?? (payload.category_id ? [payload.category_id] : [])
++      );
+     }
+     if (payload.name !== undefined) {
+       const validatedName = this.validateMenuItemName(payload.name);
+@@ -207,6 +225,10 @@ export class MenuService {
+     if (!updated) {
+       throw new NotFoundError('Menu item not found');
+     }
++    if (newCategoryIds) {
++      await menuRepository.setItemCategories(menuItemId, restaurantId, newCategoryIds);
++      return this.getMenuItem(menuItemId);
++    }
+     return updated;
+   }
+ 
+diff --git a/src/modules/menu/menu.types.ts b/src/modules/menu/menu.types.ts
+index 21dcaee..cff2d6c 100644
+--- a/src/modules/menu/menu.types.ts
++++ b/src/modules/menu/menu.types.ts
+@@ -5,6 +5,8 @@ export const CreateMenuCategoryRequestSchema = z.object({
+   description: z.string().max(1000).optional(),
+   display_order: z.number().int().min(0).default(0),
+   is_active: z.boolean().default(true),
++  // true = shown everywhere (incl. customers); false = POS / staff side only
++  show_to_customers: z.boolean().default(true),
+ });
+ 
+ export const UpdateMenuCategoryRequestSchema = z.object({
+@@ -12,6 +14,7 @@ export const UpdateMenuCategoryRequestSchema = z.object({
+   description: z.string().max(1000).optional(),
+   display_order: z.number().int().min(0).optional(),
+   is_active: z.boolean().optional(),
++  show_to_customers: z.boolean().optional(),
+ });
+ 
+ // Image URL: https only (blocks javascript:/data: URLs). Empty string clears it.
+@@ -23,8 +26,12 @@ const imageUrlSchema = z
+   .nullable()
+   .optional();
+ 
++const categoryIdsSchema = z.array(z.string().uuid('Category ID must be a valid UUID')).min(1, 'Pick at least one category').max(20);
++
+ export const CreateMenuItemRequestSchema = z.object({
+-  category_id: z.string().uuid('Category ID must be a valid UUID'),
++  // Send category_ids (one or more). category_id is still accepted for older clients.
++  category_ids: categoryIdsSchema.optional(),
++  category_id: z.string().uuid('Category ID must be a valid UUID').optional(),
+   name: z.string().min(2, 'Menu item name must be at least 2 characters').max(255, 'Menu item name must be less than 255 characters'),
+   description: z.string().max(1000).optional(),
+   price: z.number().positive('Price must be greater than 0'),
+@@ -37,9 +44,13 @@ export const CreateMenuItemRequestSchema = z.object({
+   is_featured: z.boolean().default(false),
+   skip_kitchen: z.boolean().default(false), // ready-made item: goes straight to the waiter, not the kitchen
+   ready_in_stock: z.boolean().default(true), // FALSE = batch finished, item goes to the kitchen again
++}).refine((v) => (v.category_ids && v.category_ids.length > 0) || !!v.category_id, {
++  message: 'Pick at least one category',
++  path: ['category_ids'],
+ });
+ 
+ export const UpdateMenuItemRequestSchema = z.object({
++  category_ids: categoryIdsSchema.optional(),
+   category_id: z.string().uuid('Category ID must be a valid UUID').optional(),
+   name: z.string().min(2, 'Menu item name must be at least 2 characters').max(255, 'Menu item name must be less than 255 characters').optional(),
+   description: z.string().max(1000).optional(),
+@@ -78,6 +89,7 @@ export interface MenuCategory {
+   description?: string;
+   display_order: number;
+   is_active: boolean;
++  show_to_customers: boolean;
+   created_at: Date;
+   updated_at: Date;
+ }
+@@ -85,7 +97,8 @@ export interface MenuCategory {
+ export interface MenuItem {
+   id: string;
+   restaurant_id: string;
+-  category_id: string;
++  category_id: string; // main category (first of category_ids)
++  category_ids: string[]; // every category the item is listed under
+   name: string;
+   description?: string;
+   price: number;
+diff --git a/src/modules/orders/orders.service.ts b/src/modules/orders/orders.service.ts
+index 5fa1dfd..0a5bac2 100644
+--- a/src/modules/orders/orders.service.ts
++++ b/src/modules/orders/orders.service.ts
+@@ -128,9 +128,13 @@ export class OrdersService {
+     if (!menuItem.is_active) {
+       throw new BadRequestError(`${menuItem.name} is currently unavailable`);
+     }
+-    const category = await menuRepository.findCategoryById(menuItem.category_id);
+-    if (category && !category.is_active) {
+-      throw new BadRequestError(`${menuItem.name} is currently unavailable (${category.name} is off)`);
++    // Unavailable only when EVERY category the item is listed under is switched off
++    const categories = await Promise.all(
++      (menuItem.category_ids?.length ? menuItem.category_ids : [menuItem.category_id]).map((id) => menuRepository.findCategoryById(id))
++    );
++    const found = categories.filter((c): c is NonNullable<typeof c> => !!c);
++    if (found.length > 0 && found.every((c) => !c.is_active)) {
++      throw new BadRequestError(`${menuItem.name} is currently unavailable (${found[0].name} is off)`);
+     }
+ 
+     // By-weight items (price per kg / per 100 g) are priced here from the weight;
+diff --git a/src/modules/public/public.routes.ts b/src/modules/public/public.routes.ts
+index c67aa4f..960eb30 100644
+--- a/src/modules/public/public.routes.ts
++++ b/src/modules/public/public.routes.ts
+@@ -58,8 +58,15 @@ router.get('/menu/:slug', async (req: Request, res: Response, next: NextFunction
+       menuRepository.findMenuItemsByRestaurantId(restaurant.id),
+     ]);
+ 
+-    const activeCategoryIds = new Set(categories.filter((c) => c.is_active).map((c) => c.id));
+-    const activeItems = items.filter((i) => i.is_active && activeCategoryIds.has(i.category_id));
++    // Customers only see categories that are switched on AND set to "show to customers".
++    // An item shows up if at least one of its categories qualifies; only those categories are reported.
++    const activeCategoryIds = new Set(categories.filter((c) => c.is_active && c.show_to_customers).map((c) => c.id));
++    const activeItems = items
++      .filter((i) => i.is_active && i.category_ids.some((id) => activeCategoryIds.has(id)))
++      .map((i) => {
++        const visibleIds = i.category_ids.filter((id) => activeCategoryIds.has(id));
++        return { ...i, category_ids: visibleIds, category_id: visibleIds[0] };
++      });
+ 
+     // ── Attach modifier groups with options to each menu item ────────────
+     const itemIds = activeItems.map((i) => i.id);
+@@ -153,7 +160,7 @@ router.get('/menu/:slug', async (req: Request, res: Response, next: NextFunction
+             extra_charges_amount: Number(restaurant.extra_charges_amount ?? 0),
+           },
+         },
+-        categories: categories.filter((c) => c.is_active),
++        categories: categories.filter((c) => c.is_active && c.show_to_customers),
+         items: itemsWithModifiers,
+       }),
+     );
+@@ -407,6 +414,10 @@ router.post('/order/:slug', publicOrderRateLimiter, async (req: Request, res: Re
+       if (!menuItem || menuItem.restaurant_id !== restaurantId || !menuItem.is_active) {
+         throw new BadRequestError('Menu item not available');
+       }
++      // Items that only live in staff-only (or switched-off) categories can't be ordered by customers
++      if (!(await menuRepository.isItemVisibleToCustomers(menuItem.id))) {
++        throw new BadRequestError('Menu item not available');
++      }
+       if ((menuItem as any).price_unit && (menuItem as any).price_unit !== 'PIECE') {
+         throw new BadRequestError(`"${menuItem.name}" is sold by weight — please ask the staff to add it for you`);
+       }

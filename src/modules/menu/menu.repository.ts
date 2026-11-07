@@ -191,16 +191,16 @@ export class MenuRepository {
   /** Replaces the item's category links. The first id becomes the main category. */
   async setItemCategories(menuItemId: string, restaurantId: string, categoryIds: string[]): Promise<void> {
     await query(
-      `DELETE FROM menu_item_categories WHERE menu_item_id = $1 AND category_id <> ALL($2::uuid[])`,
+      `DELETE FROM menu_item_categories WHERE menu_item_id = $1::uuid AND category_id <> ALL($2::uuid[])`,
       [menuItemId, categoryIds]
     );
     await query(
       `INSERT INTO menu_item_categories (menu_item_id, category_id, restaurant_id)
-       SELECT $1, c, $3 FROM unnest($2::uuid[]) AS c
+       SELECT $1::uuid, c, $3::uuid FROM unnest($2::uuid[]) AS c
        ON CONFLICT DO NOTHING`,
       [menuItemId, categoryIds, restaurantId]
     );
-    await query(`UPDATE menu_items SET category_id = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $1`, [menuItemId, categoryIds[0]]);
+    await query(`UPDATE menu_items SET category_id = $2::uuid, updated_at = CURRENT_TIMESTAMP WHERE id = $1::uuid`, [menuItemId, categoryIds[0]]);
   }
 
   /** True when at least one category of the item is switched on AND shown to customers. */
