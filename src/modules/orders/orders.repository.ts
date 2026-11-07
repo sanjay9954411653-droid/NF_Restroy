@@ -552,6 +552,7 @@ export class OrdersRepository {
     orderId: string,
     itemId: string,
     restaurantId: string,
+    cancelQuantity?: number,
   ): Promise<{ item: UpdatedOrderItem; order: Order; remainingItems: number }> {
     const client = await pool.connect();
     try {
@@ -568,14 +569,52 @@ export class OrdersRepository {
         throw new BadRequestError('Cannot cancel an item on a closed order');
       }
 
-      const itemResult = await client.query(
-        `UPDATE order_items SET status = 'CANCELLED', updated_at = CURRENT_TIMESTAMP
+      const existing = await client.query(
+        `SELECT quantity FROM order_items
          WHERE id = $1 AND order_id = $2 AND restaurant_id = $3 AND status <> 'CANCELLED'
-         RETURNING id, order_id, menu_item_id, quantity, unit_price, special_instructions, status, completed_at, round, created_at, updated_at`,
+         FOR UPDATE`,
         [itemId, orderId, restaurantId],
       );
-      if (!itemResult.rows[0]) {
+      if (!existing.rows[0]) {
         throw new NotFoundError('Order item not found or already cancelled');
+      }
+      const currentQty: number = existing.rows[0].quantity;
+      const qtyToCancel = cancelQuantity ?? currentQty;
+      if (qtyToCancel > currentQty) {
+        throw new BadRequestError(`Cannot cancel ${qtyToCancel}; only ${currentQty} on this item`);
+      }
+
+      const itemCols = 'id, order_id, menu_item_id, quantity, unit_price, special_instructions, status, completed_at, round, created_at, updated_at';
+      let cancelledItem: UpdatedOrderItem;
+
+      if (qtyToCancel < currentQty) {
+        // Partial cancel: keep the remaining portions on the original line and
+        // move the cancelled portions onto a new CANCELLED line (keeps the audit trail).
+        await client.query(
+          `UPDATE order_items SET quantity = quantity - $2, updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
+          [itemId, qtyToCancel],
+        );
+        const split = await client.query(
+          `INSERT INTO order_items (order_id, restaurant_id, menu_item_id, quantity, unit_price, special_instructions, status, round, weight_grams, kot_printed_at, served_at)
+           SELECT order_id, restaurant_id, menu_item_id, $2, unit_price, special_instructions, 'CANCELLED', round, weight_grams, kot_printed_at, served_at
+           FROM order_items WHERE id = $1
+           RETURNING ${itemCols}`,
+          [itemId, qtyToCancel],
+        );
+        cancelledItem = split.rows[0];
+        await client.query(
+          `INSERT INTO order_item_modifiers (order_item_id, modifier_group_id, modifier_group_name, modifier_option_id, modifier_option_name, price_adjustment)
+           SELECT $2, modifier_group_id, modifier_group_name, modifier_option_id, modifier_option_name, price_adjustment
+           FROM order_item_modifiers WHERE order_item_id = $1`,
+          [itemId, cancelledItem.id],
+        );
+      } else {
+        const itemResult = await client.query(
+          `UPDATE order_items SET status = 'CANCELLED', updated_at = CURRENT_TIMESTAMP
+           WHERE id = $1 RETURNING ${itemCols}`,
+          [itemId],
+        );
+        cancelledItem = itemResult.rows[0];
       }
 
       const totals = await client.query(
@@ -594,7 +633,7 @@ export class OrdersRepository {
         [orderId, totals.rows[0].total_amount, nextStatus],
       );
       await client.query('COMMIT');
-      return { item: itemResult.rows[0], order: updatedOrderResult.rows[0], remainingItems };
+      return { item: cancelledItem, order: updatedOrderResult.rows[0], remainingItems };
     } catch (error) {
       await client.query('ROLLBACK');
       throw error;

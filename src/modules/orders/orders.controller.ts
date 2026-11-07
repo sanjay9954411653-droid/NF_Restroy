@@ -260,9 +260,9 @@ pushService
       if (!restaurantId) throw new Error('User not associated with a restaurant');
 
       const { id: orderId, itemId } = req.params;
-      const { status } = UpdateOrderItemStatusSchema.parse(req.body);
+      const { status, cancel_quantity } = UpdateOrderItemStatusSchema.parse(req.body);
 
-      const result = await ordersService.updateItemStatus(orderId, itemId, restaurantId, status);
+      const result = await ordersService.updateItemStatus(orderId, itemId, restaurantId, status, cancel_quantity);
 
       // A cancelled line item changes the bill total; notify all connected screens.
       if (status === 'CANCELLED' && result.order) {

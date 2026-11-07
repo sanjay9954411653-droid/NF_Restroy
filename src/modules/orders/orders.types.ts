@@ -29,6 +29,8 @@ export const AddOrderItemsRequestSchema = z.object({
 
 export const UpdateOrderItemStatusSchema = z.object({
   status: z.enum(['PENDING', 'PREPARING', 'DONE', 'CANCELLED']),
+  /** Only with status CANCELLED: how many portions to cancel. Omit to cancel the whole line. */
+  cancel_quantity: z.number().int().positive().optional(),
 });
 
 export const ServeOrderSchema = z.object({
