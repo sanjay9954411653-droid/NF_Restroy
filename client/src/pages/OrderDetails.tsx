@@ -14,7 +14,7 @@ import AddItemsModal from '../components/AddItemsModal'
 import PrintKOT from '../components/PrintKOT'
 import PrintReceipt from '../components/PrintReceipt'
 import { useGrandTotal } from '../lib/useBillTotal'
-import { ArrowLeftIcon, CurrencyDollarIcon, PlusIcon, PrinterIcon } from '@heroicons/react/24/outline'
+import { ArrowLeftIcon, CurrencyDollarIcon, PlusIcon, PrinterIcon, XMarkIcon } from '@heroicons/react/24/outline'
 
 const STATUS_BADGE: Record<OrderStatus, { variant: any; label: string }> = {
   CREATED:   { variant: 'default',  label: 'Created' },
@@ -42,7 +42,9 @@ const OrderDetails: React.FC = () => {
   const [addItemsOpen, setAddItemsOpen] = useState(false)
   const [kotOpen, setKotOpen] = useState(false)
   const [receiptOpen, setReceiptOpen] = useState(false)
-  const grandTotal = useGrandTotal(order, ((order as any)?.items || (order as any)?.order_items || []) as OrderItem[])
+  const allItems: OrderItem[] = ((order as any)?.items || (order as any)?.order_items || []) as OrderItem[]
+  const billItems = allItems.filter((item) => item.status !== 'CANCELLED')
+  const grandTotal = useGrandTotal(order, billItems)
 
   const fetchAll = async () => {
     if (!id) return
@@ -63,6 +65,25 @@ const OrderDetails: React.FC = () => {
     fetchAll()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
+
+  const handleCancelItem = async (item: OrderItem) => {
+    if (!order || !item.id) return
+    const itemName = item.menu_item_name || 'this item'
+    const confirmText = billItems.length > 1
+      ? `Cancel ${itemName} only? The other ${billItems.length - 1} item(s) will remain on this order.`
+      : `Cancel ${itemName}? This is the last active item, so the order will also be closed.`
+    if (!window.confirm(confirmText)) return
+    setUpdating(true)
+    try {
+      await api.patch(`/orders/${order.id}/items/${item.id}`, { status: 'CANCELLED' })
+      toast.success(`${itemName} cancelled`)
+      await fetchAll()
+    } catch (err) {
+      toast.error(getErrorMessage(err))
+    } finally {
+      setUpdating(false)
+    }
+  }
 
   const handleStatusUpdate = async (newStatus: OrderStatus) => {
     if (!order) return
@@ -210,7 +231,7 @@ const OrderDetails: React.FC = () => {
         {/* Items */}
         <Card className="md:col-span-2">
           <h2 className="font-semibold text-gray-900 mb-4">
-            Order Items <span className="text-gray-400 font-normal">({items.length})</span>
+            Order Items <span className="text-gray-400 font-normal">({billItems.length} active)</span>
           </h2>
           {items.length === 0 ? (
             <p className="text-gray-400 text-sm">No items</p>
@@ -235,12 +256,19 @@ const OrderDetails: React.FC = () => {
                       )}
                     </div>
                     <div className="text-right shrink-0">
-                      <p className="font-semibold text-gray-900">
+                      <p className={`font-semibold ${item.status === 'CANCELLED' ? 'text-gray-400 line-through' : 'text-gray-900'}`}>
                         {formatCurrency(unitPrice * item.quantity)}
                       </p>
                       <p className="text-xs text-gray-400">
                         {item.weight_grams ? `${formatCurrency(ratePerKg(unitPrice, item.weight_grams))} / kg` : `${formatCurrency(unitPrice)} each`}
                       </p>
+                      {item.status === 'CANCELLED' ? (
+                        <span className="text-xs font-semibold text-red-600">Cancelled</span>
+                      ) : isActive ? (
+                        <button type="button" disabled={updating} onClick={() => handleCancelItem(item)} className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-red-600 hover:text-red-700 disabled:opacity-50">
+                          <XMarkIcon className="w-3.5 h-3.5" /> Cancel item
+                        </button>
+                      ) : null}
                     </div>
                   </div>
                 )
@@ -284,7 +312,7 @@ const OrderDetails: React.FC = () => {
       {kotOpen && (
         <PrintKOT
           order={order}
-          items={items}
+          items={items.filter((item) => item.status !== 'CANCELLED')}
           onClose={() => setKotOpen(false)}
         />
       )}
@@ -292,7 +320,7 @@ const OrderDetails: React.FC = () => {
       {receiptOpen && (
         <PrintReceipt
           order={order}
-          items={items}
+          items={items.filter((item) => item.status !== 'CANCELLED')}
           onClose={() => setReceiptOpen(false)}
         />
       )}

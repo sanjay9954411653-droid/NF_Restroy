@@ -47,7 +47,7 @@ interface OrderWithItems extends Order {
     quantity: number
     weight_grams?: number | null // items sold by weight: ordered weight (quantity is 1)
     special_instructions?: string
-    status?: 'PENDING' | 'PREPARING' | 'DONE'
+    status?: 'PENDING' | 'PREPARING' | 'DONE' | 'CANCELLED'
   }>
   order_items?: Array<{
     id?: string
@@ -56,7 +56,7 @@ interface OrderWithItems extends Order {
     quantity: number
     weight_grams?: number | null // items sold by weight: ordered weight (quantity is 1)
     special_instructions?: string
-    status?: 'PENDING' | 'PREPARING' | 'DONE'
+    status?: 'PENDING' | 'PREPARING' | 'DONE' | 'CANCELLED'
   }>
 }
 
@@ -131,7 +131,7 @@ const [pushBusy, setPushBusy] = useState(false)
       if (autoPrint && getConnectedPrinter()) {
         for (const order of active) {
           const allItems = (order.order_items || order.items || []) as any[]
-          const unprinted = allItems.filter((it) => !it.kot_printed_at)
+          const unprinted = allItems.filter((it) => it.status !== 'CANCELLED' && !it.kot_printed_at)
           if (unprinted.length === 0) continue
           try {
             // One ticket per round, so a customer's later add-on is its own KOT
@@ -311,8 +311,8 @@ const [pushBusy, setPushBusy] = useState(false)
         await api.patch(`/orders/${order.id}/items/${it.id}`, { status: 'DONE' })
       }
       // Everything already done but order not READY yet (e.g. items ticked one by one)
-      const all = (order.order_items || order.items || []) as any[]
-      if (remaining.length === 0 && all.every((i) => i.status === 'DONE')) {
+      const all = (order.order_items || order.items || []).filter((i: any) => i.status !== 'CANCELLED') as any[]
+      if (remaining.length === 0 && all.length > 0 && all.every((i) => i.status === 'DONE')) {
         await api.patch(`/orders/${order.id}`, { status: 'READY' })
       }
       await fetchOrders()
@@ -519,7 +519,7 @@ const [pushBusy, setPushBusy] = useState(false)
             {sorted.flatMap((order) => {
               // Every round of an order becomes its own card (same order number,
               // only that round's items). Order status/actions stay shared.
-              const allItems = (order.order_items || order.items || []) as any[]
+              const allItems = ((order.order_items || order.items || []) as any[]).filter((item) => item.status !== 'CANCELLED')
               const rounds = groupByRound(allItems)
               const orderAllDone = allItems.length > 0 && allItems.every((i: any) => i.status === 'DONE')
               return rounds

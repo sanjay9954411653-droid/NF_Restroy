@@ -90,10 +90,12 @@ const Orders: React.FC = () => {
     socket.on('ORDER_CREATED', onChange)
     socket.on('ORDER_UPDATED', onChange)
     socket.on('ORDER_DELETED', onChange)
+    socket.on('ORDER_CANCELLED', onChange)
     return () => {
       socket.off('ORDER_CREATED', onChange)
       socket.off('ORDER_UPDATED', onChange)
       socket.off('ORDER_DELETED', onChange)
+      socket.off('ORDER_CANCELLED', onChange)
     }
   }, [socket, fetchOrders])
 
