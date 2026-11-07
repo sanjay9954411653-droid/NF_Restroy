@@ -1,0 +1,22 @@
+Multi-category items + "Show to customers" category switch
+============================================================
+
+Apply: copy the files in this folder into your repo at the same paths
+(do NOT upload the zip itself), commit, let Railway redeploy.
+Or run:  git apply multi-category.diff   (use this if your GitHub files differ
+from the ones you uploaded, so nothing newer gets overwritten).
+
+THEN, in the backend service's Railway shell:
+    npm run migrate
+This runs migrations/046_multi_category_items.sql. Do not skip it, or the
+menu API will fail (new table + new column).
+
+What changed
+- An item can be in several categories (tick boxes in the item form). The first
+  ticked category is its "main" one; old code keeps using that.
+- Each category has "Show to customers":
+    ON  (default) = visible everywhere: customer QR menu, website, WhatsApp, POS, staff, waiter app
+    OFF           = visible only on POS / staff / waiter side
+  Customers also can't order an item that is only in OFF categories.
+- Deleting a category no longer deletes items that are also in another category.
+- The API still accepts the old single "category_id".

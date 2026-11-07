@@ -215,9 +215,14 @@ const MenuForm: React.FC<MenuFormProps> = ({ menuItem, onClose, onSave }) => {
 
       onSave(savedItem)
       onClose()
-    } catch (error) {
+    } catch (error: any) {
+      // Show the real reason from the server (validation issue, duplicate name, ...)
+      const err = error?.response?.data?.error
+      const detail = Array.isArray(err?.details) && err.details.length
+        ? err.details.map((d: any) => (d.path ? `${d.path}: ${d.message}` : d.message)).join('; ')
+        : err?.message || error?.message || ''
       toast.error('Failed to save menu item')
-      setErrors({ api: 'Failed to save menu item. Please try again.' })
+      setErrors({ api: detail ? `Failed to save menu item: ${detail}` : 'Failed to save menu item. Please try again.' })
     } finally {
       setSaving(false);
     }
