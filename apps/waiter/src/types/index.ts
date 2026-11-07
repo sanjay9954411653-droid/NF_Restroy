@@ -65,7 +65,8 @@ export interface OrderItem {
   quantity: number
   unit_price?: number
   special_instructions?: string
-  status?: 'PENDING' | 'PREPARING' | 'DONE'
+  status?: 'PENDING' | 'PREPARING' | 'DONE' | 'CANCELLED'
+  kot_printed_at?: string | null
   round?: number
   served_at?: string | null
   skip_kitchen?: boolean

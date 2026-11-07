@@ -399,7 +399,18 @@ export class OrdersService {
 
     if (status === 'CANCELLED') {
       const cancelled = await ordersRepository.cancelOrderItem(orderId, itemId, restaurantId, cancelQuantity);
-      return { item: cancelled.item, orderAutoAdvanced: false, order: cancelled.order };
+      // Cancelling the last unfinished dish can leave only finished ones: the order is then READY
+      let cancelledOrder: Order = cancelled.order;
+      let advanced = false;
+      if (
+        cancelled.remainingItems > 0 &&
+        ['ACCEPTED', 'PREPARING'].includes(cancelledOrder.status) &&
+        (await ordersRepository.allItemsDone(orderId))
+      ) {
+        cancelledOrder = (await ordersRepository.update(orderId, { status: 'READY' })) ?? cancelledOrder;
+        advanced = true;
+      }
+      return { item: cancelled.item, orderAutoAdvanced: advanced, order: cancelledOrder };
     }
 
     const item = await ordersRepository.updateItemStatus(itemId, orderId, status);

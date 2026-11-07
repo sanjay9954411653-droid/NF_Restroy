@@ -16,7 +16,8 @@ export interface ReadyRound {
 }
 
 export function orderItemsOf(order: Order): OrderItem[] {
-  return (order.order_items || order.items || []) as OrderItem[]
+  // Cancelled portions stay on the order for the audit trail but are not shown or counted
+  return ((order.order_items || order.items || []) as OrderItem[]).filter((i) => i.status !== 'CANCELLED')
 }
 
 /** Rounds that are finished in the kitchen and still waiting to be served. */

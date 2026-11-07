@@ -20,6 +20,7 @@ import { formatDistanceToNow } from 'date-fns'
 import type { Order, OrderStatus } from '../types'
 import { getReadyRounds, isFullyServed, orderItemsOf, isIncomingPending, SOURCE_LABEL } from '../lib/orderRounds'
 import { usePayable } from '../lib/usePayable'
+import CancelItemsSheet from '../components/CancelItemsSheet'
 
 const formatCurrency = (n: number) =>
   new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 }).format(n)
@@ -427,6 +428,7 @@ const MyOrdersPage: React.FC = () => {
   const navigate = useNavigate()
   const { orders, queue, isLoading, fetchOrders, serve, markRoundReady, updateStatus } = useOrderStore()
   const [payingOrder, setPayingOrder] = useState<Order | null>(null)
+  const [cancelOrder, setCancelOrder] = useState<Order | null>(null)
   const [servingKey, setServingKey] = useState<string | null>(null)
   const [readyKey, setReadyKey] = useState<string | null>(null)       // round being saved
   const [decidingId, setDecidingId] = useState<string | null>(null)
@@ -653,6 +655,9 @@ const MyOrdersPage: React.FC = () => {
                       <CheckCircleIcon className="w-5 h-5" />
                       {servingKey === key ? 'Saving…' : 'Serve Order'}
                     </button>
+                    <button onClick={() => setCancelOrder(order)} className="w-full text-xs font-semibold text-red-600 py-1">
+                      Cancel items
+                    </button>
                   </div>
                 )
               })}
@@ -702,6 +707,14 @@ const MyOrdersPage: React.FC = () => {
                       >
                         <PlusIcon className="w-4 h-4" />
                         Add
+                      </button>
+                      <button
+                        onClick={() => setCancelOrder(order)}
+                        className="btn-secondary flex items-center gap-1.5 py-3 px-3 text-sm text-red-600"
+                        title="Cancel items"
+                      >
+                        <XMarkIcon className="w-4 h-4" />
+                        Cancel
                       </button>
                     </div>
                   </div>
@@ -771,20 +784,39 @@ const MyOrdersPage: React.FC = () => {
                         </button>
                       )
                     })}
-                    <button
-                      onClick={() => navigate(`/order/add/${order.id}?table=${order.table?.table_number || ''}`)}
-                      className="btn-secondary w-full flex items-center justify-center gap-1.5 py-2.5 text-sm"
-                      title="Add more items"
-                    >
-                      <PlusIcon className="w-4 h-4" />
-                      Add items
-                    </button>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => navigate(`/order/add/${order.id}?table=${order.table?.table_number || ''}`)}
+                        className="btn-secondary flex-1 flex items-center justify-center gap-1.5 py-2.5 text-sm"
+                        title="Add more items"
+                      >
+                        <PlusIcon className="w-4 h-4" />
+                        Add items
+                      </button>
+                      <button
+                        onClick={() => setCancelOrder(order)}
+                        className="btn-secondary flex items-center justify-center gap-1.5 py-2.5 px-3 text-sm text-red-600"
+                        title="Cancel items"
+                      >
+                        <XMarkIcon className="w-4 h-4" />
+                        Cancel
+                      </button>
+                    </div>
                   </div>
                 )
               })}
             </section>
           )}
         </>
+      )}
+
+      {/* Cancel items sheet */}
+      {cancelOrder && (
+        <CancelItemsSheet
+          order={cancelOrder}
+          onClose={() => setCancelOrder(null)}
+          onDone={() => { setCancelOrder(null); fetchOrders() }}
+        />
       )}
 
       {/* Inline payment sheet */}

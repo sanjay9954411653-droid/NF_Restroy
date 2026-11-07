@@ -235,3 +235,32 @@ export async function sweepPendingKots(): Promise<void> {
   const res = await ordersApi.kotPending()
   for (const id of res.data.data.order_ids) await printKotForOrder(id)
 }
+
+// ── Cancellation slip ───────────────────────────────────────────────────────
+export interface CancelledLine { name: string; quantity: number }
+
+/** Tells the kitchen to stop making portions that were already sent on a KOT. Never throws. */
+export async function printCancellationSlip(
+  info: { orderNumber: string; table?: string | null; lines: CancelledLine[] },
+  prefs = getKotPrefs(),
+): Promise<boolean> {
+  if (!isWifiPrintingAvailable() || !isPrinterConfigured(prefs) || info.lines.length === 0) return false
+  const W = cols(prefs)
+  const center = (s: string) => bytes(ESC, 0x61, 1, s + '\n')
+  const left = (s: string) => bytes(ESC, 0x61, 0, s + '\n')
+  const rule = '-'.repeat(W)
+  const out: number[] = [...bytes(ESC, 0x40)]
+  out.push(...bytes(ESC, 0x45, 1, GS, 0x21, 0x11), ...center('** CANCELLED **'), ...bytes(GS, 0x21, 0x00, ESC, 0x45, 0))
+  out.push(...center('STOP MAKING THESE'), ...left(rule))
+  out.push(...center(ascii(info.orderNumber) + (info.table ? `  -  TABLE ${ascii(String(info.table))}` : '')))
+  out.push(...center(new Date().toLocaleString('en-IN')), ...left(rule))
+  for (const l of info.lines) out.push(...bytes(ESC, 0x45, 1), ...left(`${l.quantity}x  ${ascii(l.name)}`), ...bytes(ESC, 0x45, 0))
+  out.push(...left(rule), ...bytes(prefs.autoCutter ? '\n\n\n' : '\n\n\n\n\n'))
+  if (prefs.autoCutter) out.push(...bytes(GS, 0x56, 1))
+  try {
+    await sendToPrinter(new Uint8Array(out), prefs)
+    return true
+  } catch {
+    return false
+  }
+}

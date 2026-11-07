@@ -83,6 +83,10 @@ export const ordersApi = {
   markItemDone: (orderId: string, itemId: string) =>
     api.patch(`/orders/${orderId}/items/${itemId}`, { status: 'DONE' }),
 
+  // Cancel some (or all) portions of one item; the bill total updates, and the order closes if nothing is left
+  cancelItem: (orderId: string, itemId: string, quantity: number) =>
+    api.patch(`/orders/${orderId}/items/${itemId}`, { status: 'CANCELLED', cancel_quantity: quantity }),
+
   // Waiter confirms food was served (optionally only one round)
   serve: (id: string, round?: number) =>
     api.post(`/orders/${id}/serve`, round ? { round } : {}),
