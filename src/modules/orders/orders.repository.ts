@@ -626,11 +626,11 @@ export class OrdersRepository {
       const remainingItems = totals.rows[0].remaining_items;
       const nextStatus = remainingItems === 0 ? 'CANCELLED' : orderRow.status;
       const updatedOrderResult = await client.query(
-        `UPDATE orders SET total_amount = $2, status = $3, updated_at = CURRENT_TIMESTAMP,
-             completed_at = CASE WHEN $3 = 'CANCELLED' THEN CURRENT_TIMESTAMP ELSE completed_at END
+        `UPDATE orders SET total_amount = $2, status = $3::order_status, updated_at = CURRENT_TIMESTAMP,
+             completed_at = CASE WHEN $4::boolean THEN CURRENT_TIMESTAMP ELSE completed_at END
          WHERE id = $1
          RETURNING id, restaurant_id, table_id, order_number, token_number, order_type, order_source, status, total_amount, priority_score, special_instructions, created_by, created_at, updated_at, completed_at`,
-        [orderId, totals.rows[0].total_amount, nextStatus],
+        [orderId, totals.rows[0].total_amount, nextStatus, nextStatus === 'CANCELLED'],
       );
       await client.query('COMMIT');
       return { item: cancelledItem, order: updatedOrderResult.rows[0], remainingItems };
