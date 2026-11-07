@@ -69,14 +69,33 @@ const OrderDetails: React.FC = () => {
   const handleCancelItem = async (item: OrderItem) => {
     if (!order || !item.id) return
     const itemName = item.menu_item_name || 'this item'
-    const confirmText = billItems.length > 1
-      ? `Cancel ${itemName} only? The other ${billItems.length - 1} item(s) will remain on this order.`
-      : `Cancel ${itemName}? This is the last active item, so the order will also be closed.`
+    let cancelQty = item.quantity
+    // For multi-portion lines (not weight-based), ask how many to cancel
+    if (item.quantity > 1 && !item.weight_grams) {
+      const input = window.prompt(
+        `${itemName}: ${item.quantity} portions on this order.\nHow many do you want to cancel? (1-${item.quantity})`,
+        '1',
+      )
+      if (input === null) return
+      const n = Number(input)
+      if (!Number.isInteger(n) || n < 1 || n > item.quantity) {
+        toast.error(`Enter a number between 1 and ${item.quantity}`)
+        return
+      }
+      cancelQty = n
+    }
+    const wholeLine = cancelQty === item.quantity
+    const lastActive = wholeLine && billItems.length <= 1
+    const confirmText = !wholeLine
+      ? `Cancel ${cancelQty} of ${item.quantity} ${itemName}? The other ${item.quantity - cancelQty} will remain on this order.`
+      : lastActive
+        ? `Cancel ${itemName}? This is the last active item, so the order will also be closed.`
+        : `Cancel ${itemName} only? The other ${billItems.length - 1} item(s) will remain on this order.`
     if (!window.confirm(confirmText)) return
     setUpdating(true)
     try {
-      await api.patch(`/orders/${order.id}/items/${item.id}`, { status: 'CANCELLED' })
-      toast.success(`${itemName} cancelled`)
+      await api.patch(`/orders/${order.id}/items/${item.id}`, wholeLine ? { status: 'CANCELLED' } : { status: 'CANCELLED', cancel_quantity: cancelQty })
+      toast.success(wholeLine ? `${itemName} cancelled` : `${cancelQty} × ${itemName} cancelled`)
       await fetchAll()
     } catch (err) {
       toast.error(getErrorMessage(err))
