@@ -17,6 +17,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { ordersApi, CreateOrderPayload } from '../api/endpoints'
 import type { Order, QueuedOrder } from '../types'
+import { autoPrintAfterOrder } from '../lib/kotPrinter'
 
 function uuid(): string {
   return crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2)
@@ -95,6 +96,7 @@ export const useOrderStore = create<OrderState>()(
               orders: [order, ...state.orders],
               queue:  state.queue.filter((q) => q.id !== item.id),
             }))
+            autoPrintAfterOrder(order.id) // an order placed offline prints once it reaches the server
             console.log(`[OfflineQueue] ✅ Synced order ${item.id}`)
           } catch (err: any) {
             if (!err.response) break // still offline — stop trying

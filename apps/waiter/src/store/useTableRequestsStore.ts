@@ -169,6 +169,7 @@ export const useTableRequestsStore = create<TableRequestsState>((set, get) => ({
     const refreshOrders = () => {
       if (orderRefreshTimer) clearTimeout(orderRefreshTimer)
       orderRefreshTimer = setTimeout(() => useOrderStore.getState().fetchOrders(), 300)
+      window.dispatchEvent(new Event('kot-orders-changed')) // lets a "kitchen printer station" print new tickets
     }
     socket.on('ORDER_CREATED', refreshOrders)
     socket.on('ORDER_UPDATED', refreshOrders)

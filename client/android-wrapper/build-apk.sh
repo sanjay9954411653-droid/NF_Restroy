@@ -10,7 +10,8 @@
 set -euo pipefail
 
 : "${APP_URL:?Set APP_URL to your hosted app, e.g. https://your-app.up.railway.app}"
-APP_ID="com.auraos.pos"
+APP_ID="${APP_ID:-com.auraos.pos}"       # a different id = a separate app that installs side by side (e.g. the Waiter app)
+APK_NAME="${APK_NAME:-AuraOS.apk}"
 APP_NAME="${APP_NAME:-AuraOS}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 OUT="$HERE/../android-build"          # generated project (git-ignored)
@@ -47,9 +48,11 @@ npm install --no-audit --no-fund
 npx cap add android
 
 # Add the native printer plugin and register it.
-JAVA_DIR="android/app/src/main/java/com/auraos/pos"
+JAVA_DIR="android/app/src/main/java/$(echo "$APP_ID" | tr . /)"
 mkdir -p "$JAVA_DIR"
-cp "$HERE/TcpPrinterPlugin.java" "$HERE/MainActivity.java" "$JAVA_DIR/"
+for f in TcpPrinterPlugin.java MainActivity.java; do
+  sed "s/^package .*;/package $APP_ID;/" "$HERE/$f" > "$JAVA_DIR/$f"
+done
 # Remove any MainActivity the generator put elsewhere (it uses the same appId, so same folder).
 
 npx cap sync android
@@ -58,5 +61,5 @@ chmod +x gradlew
 ./gradlew assembleDebug --no-daemon
 
 APK="app/build/outputs/apk/debug/app-debug.apk"
-cp "$APK" "$HERE/../AuraOS.apk"
-echo "Built: client/AuraOS.apk"
+cp "$APK" "$HERE/../$APK_NAME"
+echo "Built: client/$APK_NAME"

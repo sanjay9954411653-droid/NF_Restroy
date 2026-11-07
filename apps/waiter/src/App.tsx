@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
 import { useAuthStore } from './store/useAuthStore'
@@ -13,6 +13,8 @@ import OfflineBanner from './components/OfflineBanner'
 import TableRequestsBanner from './components/TableRequestsBanner'
 import ConnectionBanner from './components/ConnectionBanner'
 import { useTableRequestsStore } from './store/useTableRequestsStore'
+import { useKotStation } from './hooks/useKotStation'
+import { getKotPrefs } from './lib/kotPrinter'
 
 // ── Protected wrapper ─────────────────────────────────────────────────────────
 const Protected: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -45,6 +47,15 @@ const App: React.FC = () => {
   const { restoreSession, user, token } = useAuthStore()
   const { fetchAll } = useMenuStore()
   const { connect, disconnect, fetchPending } = useTableRequestsStore()
+
+  // Kitchen printer station (this device prints every new order's KOT to the WiFi printer)
+  const [stationOn, setStationOn] = useState(() => getKotPrefs().station)
+  useEffect(() => {
+    const sync = () => setStationOn(getKotPrefs().station)
+    window.addEventListener('kot-prefs-changed', sync)
+    return () => window.removeEventListener('kot-prefs-changed', sync)
+  }, [])
+  useKotStation(!!user && stationOn)
 
   useEffect(() => {
     restoreSession()

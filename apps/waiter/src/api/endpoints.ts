@@ -92,6 +92,14 @@ export const ordersApi = {
       })),
     }),
 
+  // Direct WiFi KOT printing: list orders awaiting a KOT, claim one atomically, give items back if printing failed
+  kotPending: () =>
+    api.get<{ success: boolean; data: { order_ids: string[] } }>('/orders/kot-pending'),
+  kotClaim: (id: string) =>
+    api.post<{ success: boolean; data: { kot: KotTicketData | null } }>(`/orders/${id}/kot-claim`),
+  kotRelease: (id: string, item_ids: string[]) =>
+    api.post(`/orders/${id}/kot-release`, { item_ids }),
+
   getActiveByTable: (tableId: string) =>
     api.get<{ success: boolean; data: { order: Order; items: any[] } | null }>(
       `/orders/active/by-table/${tableId}`,
@@ -116,4 +124,26 @@ export const paymentsApi = {
     api.get<{ success: boolean; data: { total: number; paid: number; balance: number } }>(
       `/payments/order/${orderId}/balance`,
     ),
+}
+
+export interface KotTicketData {
+  restaurant_name: string
+  order_number: string
+  table_number: string | null
+  order_type: string
+  order_source: string
+  guest_label: string | null
+  special_instructions: string | null
+  created_at: string
+  rounds: Array<{
+    round: number
+    item_ids: string[]
+    items: Array<{
+      name: string
+      quantity: number
+      weight_grams: number | null
+      special_instructions: string | null
+      modifiers: string[]
+    }>
+  }>
 }

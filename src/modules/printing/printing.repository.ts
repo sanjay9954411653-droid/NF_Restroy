@@ -92,6 +92,24 @@ export class PrintingRepository {
     return r.rows.map((x: { id: string }) => x.id);
   }
 
+  /** Orders (accepted / preparing, last 12h) that still have items nobody has printed a KOT for. */
+  async listOrdersWithUnprintedItems(restaurantId: string): Promise<string[]> {
+    const r = await query(
+      `SELECT o.id FROM orders o
+       WHERE o.restaurant_id = $1
+         AND o.status IN ('ACCEPTED', 'PREPARING')
+         AND o.created_at > CURRENT_TIMESTAMP - INTERVAL '12 hours'
+         AND EXISTS (
+           SELECT 1 FROM order_items oi
+           WHERE oi.order_id = o.id AND oi.kot_printed_at IS NULL
+             AND oi.status <> 'CANCELLED' AND COALESCE(oi.skip_kitchen, FALSE) = FALSE
+         )
+       ORDER BY o.created_at ASC LIMIT 20`,
+      [restaurantId],
+    );
+    return r.rows.map((x: { id: string }) => x.id);
+  }
+
   async unmarkItems(orderId: string, restaurantId: string, itemIds: string[]): Promise<void> {
     if (itemIds.length === 0) return;
     await query(

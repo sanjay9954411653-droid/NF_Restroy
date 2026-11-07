@@ -32,3 +32,26 @@ Repeat step 3 on every device that should print.
 - "Can't reach IP:9100": wrong IP, printer off, different WiFi, or WiFi "client isolation" is on in the router.
 - Prints garbage: printer isn't ESC/POS — tell me the model.
 - Connected but nothing prints: try the self-test slip to confirm the printer works, then check the paper size setting.
+
+
+---
+
+# Waiter app: KOT auto-print over WiFi (no kitchen display needed)
+
+The **Waiter app** can print kitchen tickets straight to the WiFi printer.
+
+## One-time setup
+1. Build a Waiter APK: GitHub → **Actions → Build Android APK → Run workflow** with
+   `app_url` = your **waiter** site address, `app_name` = `AuraOS Waiter`, `app_id` = `com.auraos.waiter`,
+   `apk_name` = `AuraOS-Waiter.apk`. Install it on the waiters' phones.
+2. Printer on the restaurant WiFi (or Ethernet to the router); reserve its IP in the router.
+3. In the Waiter app: **Profile → Kitchen printer (WiFi)** → enter the IP (port `9100`) → **Connect** → **Test print**.
+
+## Choose how it prints
+- **Auto-print when I place an order** (on by default): your own orders print the moment you confirm.
+- **Kitchen printer station**: turn this on for **one** phone/tablet near the kitchen. It prints **every** new order —
+  other waiters' orders and QR/online orders once accepted. Keep the app open, the screen on and the device charging.
+  Use this if the owner doesn't want a kitchen display.
+
+Nothing prints twice: the server hands each item to exactly one device. If the printer can't be reached, the app retries
+3 times, then shows an error and the order is picked up again by the station (or reprint from the Kitchen screen).

@@ -11,6 +11,10 @@ router.get('/', authenticate, (req, res, next) => ordersController.list(req, res
 router.get('/stats', authenticate, authorize('ADMIN'), (req, res, next) => ordersController.getStats(req, res, next));
 // Active order lookup for a table (for "add to existing order" flow)
 router.get('/active/by-table/:tableId', authenticate, (req, res, next) => ordersController.getActiveByTable(req, res, next));
+// Devices with their own WiFi KOT printer (waiter app): list what still needs printing, claim it atomically, release on failure
+router.get('/kot-pending', authenticate, checkSubscription, authorize('WAITER', 'KITCHEN', 'ADMIN', 'RECEPTION'), (req, res, next) => ordersController.kotPending(req, res, next));
+router.post('/:id/kot-claim', authenticate, checkSubscription, authorize('WAITER', 'KITCHEN', 'ADMIN', 'RECEPTION'), (req, res, next) => ordersController.kotClaim(req, res, next));
+router.post('/:id/kot-release', authenticate, checkSubscription, authorize('WAITER', 'KITCHEN', 'ADMIN', 'RECEPTION'), (req, res, next) => ordersController.kotRelease(req, res, next));
 router.get('/:id', authenticate, (req, res, next) => ordersController.getById(req, res, next));
 // Append items to an existing open order (running tab)
 router.post('/:id/items', authenticate, checkSubscription, (req, res, next) => ordersController.addItems(req, res, next));

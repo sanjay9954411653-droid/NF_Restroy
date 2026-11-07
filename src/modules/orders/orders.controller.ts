@@ -160,6 +160,38 @@ export class OrdersController {
     }
   }
   
+  async kotPending(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const restaurantId = req.user?.restaurantId;
+      if (!restaurantId) throw new Error('User not associated with a restaurant');
+      res.json(successResponse({ order_ids: await printingService.listPendingKotOrders(restaurantId) }));
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async kotClaim(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const restaurantId = req.user?.restaurantId;
+      if (!restaurantId) throw new Error('User not associated with a restaurant');
+      res.json(successResponse({ kot: await printingService.claimKotForDevice(req.params.id, restaurantId) }));
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async kotRelease(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const restaurantId = req.user?.restaurantId;
+      if (!restaurantId) throw new Error('User not associated with a restaurant');
+      const { item_ids } = MarkKotPrintedSchema.parse(req.body);
+      await printingService.releaseKot(req.params.id, restaurantId, item_ids);
+      res.json(successResponse({ released: true }));
+    } catch (error) {
+      next(error);
+    }
+  }
+
   async markKotPrinted(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
     try {
       const restaurantId = req.user?.restaurantId;

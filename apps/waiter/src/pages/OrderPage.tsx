@@ -4,6 +4,7 @@
  * Supports both new orders and adding to existing orders.
  */
 
+import { autoPrintAfterOrder } from '../lib/kotPrinter'
 import { useEffect, useState, useMemo } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
@@ -69,6 +70,7 @@ const OrderPage: React.FC = () => {
       if (isAddMode && orderId) {
         // Add items to existing order
         await ordersApi.addItems(orderId, cart)
+        autoPrintAfterOrder(orderId)
         toast.success(`Added ${count()} item(s) to order`)
         clear()
         navigate('/orders')
@@ -89,6 +91,7 @@ const OrderPage: React.FC = () => {
         })
 
         if (order) {
+          autoPrintAfterOrder(order.id)
           toast.success(`Order ${order.order_number} created`)
         } else {
           toast.success('Order queued — will sync when online', { icon: '📶' })

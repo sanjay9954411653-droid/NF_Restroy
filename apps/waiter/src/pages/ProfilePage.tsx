@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useAuthStore } from '../store/useAuthStore'
+import KotPrinterCard from '../components/KotPrinterCard'
 import { enablePushNotifications, disablePushNotifications, getPushStatus, getPushSupport, PushStatus } from '../lib/push'
 
 const ROLE_LABELS: Record<string, string> = {
@@ -86,6 +87,8 @@ const ProfilePage: React.FC = () => {
           </div>
         </div>
       )}
+
+      <KotPrinterCard />
 
       <p className="text-xs text-gray-400 px-1">
         You'll stay signed in on this device between shifts. Log out only if this device is shared or you're switching accounts.
