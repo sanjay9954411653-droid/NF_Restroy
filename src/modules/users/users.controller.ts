@@ -3,6 +3,8 @@ import { usersService } from './users.service';
 import { CreateUserSchema, UpdateUserSchema, ChangePasswordSchema } from './users.types';
 import { successResponse } from '@/shared/utils/responseHandler';
 import { AuthenticatedRequest } from '@/shared/middleware/authenticate';
+import { getAssignedTableIds, setAssignedTableIds } from '@/shared/tableAccess';
+import { z } from 'zod';
 
 export class UsersController {
   async list(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
@@ -19,6 +21,22 @@ export class UsersController {
     try {
       const user = await usersService.getUser(req.params.id, req.user!.restaurantId);
       res.status(200).json(successResponse(user));
+    } catch (error) { next(error); }
+  }
+
+  async getTables(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      await usersService.getUser(req.params.id, req.user!.restaurantId); // 404 if not in this restaurant
+      res.status(200).json(successResponse({ table_ids: await getAssignedTableIds(req.params.id) }));
+    } catch (error) { next(error); }
+  }
+
+  async setTables(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { table_ids } = z.object({ table_ids: z.array(z.string().uuid()) }).parse(req.body);
+      await usersService.getUser(req.params.id, req.user!.restaurantId);
+      const saved = await setAssignedTableIds(req.params.id, req.user!.restaurantId, table_ids);
+      res.status(200).json(successResponse({ table_ids: saved }, { message: 'Tables assigned' }));
     } catch (error) { next(error); }
   }
 

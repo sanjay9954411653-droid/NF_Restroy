@@ -16,6 +16,7 @@ import { AuthenticatedRequest } from '@/shared/middleware/authenticate';
 import { eventBroadcaster } from '@/shared/socket/eventBroadcaster';
 import { clearDelayAlert } from '@/shared/jobs/delayDetector';
 import { pushService } from '@/modules/push/push.service';
+import { assertTableAccess, assertOrderAccess, getAllowedTableIds } from '@/shared/tableAccess';
 
 export class OrdersController {
   async create(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
@@ -25,6 +26,7 @@ export class OrdersController {
 
       const userId = req.user?.userId || null;
       const payload = CreateOrderRequestSchema.parse(req.body) as CreateOrderRequest;
+      await assertTableAccess(req.user, payload.table_id);
       const result = await ordersService.createOrder(restaurantId, userId, payload);
 
       // Broadcast real-time event
@@ -64,8 +66,9 @@ pushService
       const sortBy = req.query.sort_by as string | undefined;
       const sortOrder = req.query.sort_order as string | undefined;
 
+      const allowedTables = await getAllowedTableIds(req.user);
       const { items, total } = await ordersService.getOrders(
-        restaurantId, pagination.limit, pagination.offset, status, sortBy, sortOrder,
+        restaurantId, pagination.limit, pagination.offset, status, sortBy, sortOrder, allowedTables,
       );
       res.status(200).json(successResponse(paginatedResponse(items, total, pagination)));
     } catch (error) {
@@ -81,6 +84,7 @@ pushService
       }
 
       const { id } = req.params;
+      await assertOrderAccess(req.user, id);
       const order = await ordersService.getOrder(id, restaurantId);
       res.status(200).json(successResponse(order));
     } catch (error) {
@@ -101,6 +105,7 @@ pushService
       }
 
       const { tableId } = req.params;
+      await assertTableAccess(req.user, tableId);
       const result = await ordersService.getActiveOrderForTable(restaurantId, tableId);
       res.status(200).json(successResponse(result));
     } catch (error) {
@@ -118,6 +123,7 @@ pushService
       if (!restaurantId) throw new Error('User not associated with a restaurant');
 
       const { id } = req.params;
+      await assertOrderAccess(req.user, id);
       const payload = AddOrderItemsRequestSchema.parse(req.body);
       const result = await ordersService.addItemsToOrder(id, restaurantId, payload.items);
 
@@ -161,6 +167,7 @@ pushService
       if (!restaurantId) throw new Error('User not associated with a restaurant');
 
       const { id } = req.params;
+      await assertOrderAccess(req.user, id);
       const { round } = ServeOrderSchema.parse(req.body || {});
       const { served, order } = await ordersService.serveOrder(id, restaurantId, round);
 
@@ -184,6 +191,7 @@ pushService
       if (!restaurantId) throw new Error('User not associated with a restaurant');
 
       const { id } = req.params;
+      await assertOrderAccess(req.user, id);
       const payload = UpdateOrderRequestSchema.parse(req.body) as UpdateOrderRequest;
       const order = await ordersService.updateOrder(id, restaurantId, payload);
 
@@ -260,6 +268,7 @@ pushService
       if (!restaurantId) throw new Error('User not associated with a restaurant');
 
       const { id: orderId, itemId } = req.params;
+      await assertOrderAccess(req.user, orderId);
       const { status, cancel_quantity } = UpdateOrderItemStatusSchema.parse(req.body);
 
       const result = await ordersService.updateItemStatus(orderId, itemId, restaurantId, status, cancel_quantity);

@@ -97,6 +97,13 @@ export class OrdersService {
     if (!menuItem || menuItem.restaurant_id !== restaurantId) {
       throw new BadRequestError('Menu item does not belong to this restaurant');
     }
+    if (!menuItem.is_active) {
+      throw new BadRequestError(`${menuItem.name} is currently unavailable`);
+    }
+    const category = await menuRepository.findCategoryById(menuItem.category_id);
+    if (category && !category.is_active) {
+      throw new BadRequestError(`${menuItem.name} is currently unavailable (${category.name} is off)`);
+    }
 
     // By-weight items (price per kg / per 100 g) are priced here from the weight;
     // normal items use the menu price. Never taken from the client.
@@ -215,10 +222,11 @@ export class OrdersService {
     statusFilter?: string,
     sortBy?: string,
     sortOrder?: string,
+    tableIds?: string[] | null,
   ): Promise<{ items: any[]; total: number }> {
     const [items, total] = await Promise.all([
-      ordersRepository.findByRestaurantIdFiltered(restaurantId, limit, offset, statusFilter, sortBy, sortOrder),
-      ordersRepository.countByRestaurantId(restaurantId, statusFilter),
+      ordersRepository.findByRestaurantIdFiltered(restaurantId, limit, offset, statusFilter, sortBy, sortOrder, tableIds),
+      ordersRepository.countByRestaurantId(restaurantId, statusFilter, tableIds),
     ]);
     return { items, total };
   }

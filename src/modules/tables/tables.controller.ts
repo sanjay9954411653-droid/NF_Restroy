@@ -7,6 +7,7 @@ import {
   UpdateTableRequestSchema,
 } from './tables.types';
 import { successResponse } from '@/shared/utils/responseHandler';
+import { getAllowedTableIds, assertTableAccess } from '@/shared/tableAccess';
 import { AuthenticatedRequest } from '@/shared/middleware/authenticate';
 import { eventBroadcaster } from '@/shared/socket/eventBroadcaster';
 
@@ -52,8 +53,13 @@ export class TablesController {
       const limit = parseInt(req.query.limit as string) || 50;
       const offset = parseInt(req.query.offset as string) || 0;
 
-      const tables = await tablesService.getAllTables(restaurantId, limit, offset);
-      const total = await tablesService.getTableCount(restaurantId);
+      const allowed = await getAllowedTableIds(req.user);
+      let tables = await tablesService.getAllTables(restaurantId, limit, offset);
+      let total = await tablesService.getTableCount(restaurantId);
+      if (allowed) {
+        tables = (await tablesService.getAllTables(restaurantId, 1000, 0)).filter((t: any) => allowed.includes(t.id));
+        total = tables.length;
+      }
 
       res.status(200).json(
         successResponse(tables, {
@@ -82,7 +88,9 @@ export class TablesController {
         throw new Error('User not associated with a restaurant');
       }
 
-      const tables = await tablesService.getTablesWithStatus(restaurantId);
+      const allowed = await getAllowedTableIds(req.user);
+      let tables = await tablesService.getTablesWithStatus(restaurantId);
+      if (allowed) tables = tables.filter((t: any) => allowed.includes(t.id));
       res.status(200).json(successResponse(tables));
     } catch (error) {
       next(error);
@@ -101,6 +109,7 @@ export class TablesController {
       }
 
       const { id } = req.params;
+      await assertTableAccess(req.user, id);
       const table = await tablesService.getTable(id);
 
       // Ensure table belongs to user's restaurant

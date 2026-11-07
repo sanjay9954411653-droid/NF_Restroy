@@ -49,6 +49,8 @@ const Users: React.FC = () => {
   const [pwdUserId, setPwdUserId] = useState('')
   const [newPwd, setNewPwd] = useState('')
   const [savingPwd, setSavingPwd] = useState(false)
+  const [allTables, setAllTables] = useState<{ id: string; table_number: string }[]>([])
+  const [assignedIds, setAssignedIds] = useState<string[]>([])
   const [search, setSearch] = useState('')
   const [roleFilter, setRoleFilter] = useState<UserRole | 'ALL'>('ALL')
 
@@ -78,11 +80,31 @@ const Users: React.FC = () => {
 
   const openCreate = () => {
     setEditing(null)
+    setAssignedIds([])
+    loadTablesForForm()
     setForm(defaultForm)
     setFormOpen(true)
   }
 
+  const loadTablesForForm = async (userId?: string) => {
+    try {
+      const res = await api.get('/tables', { params: { limit: 500 } })
+      setAllTables(res.data.data || [])
+      if (userId) {
+        const a = await api.get(`/users/${userId}/tables`)
+        setAssignedIds(a.data.data.table_ids || [])
+      }
+    } catch (err) {
+      toast.error(getErrorMessage(err))
+    }
+  }
+
+  const toggleAssigned = (id: string) =>
+    setAssignedIds((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]))
+
   const openEdit = (user: User) => {
+    setAssignedIds([])
+    loadTablesForForm(user.id)
     setEditing(user)
     setForm({
       email: user.email,
@@ -108,10 +130,12 @@ const Users: React.FC = () => {
           role: form.role,
           is_active: form.is_active,
         })
+        if (form.role === 'WAITER') await api.put(`/users/${editing.id}/tables`, { table_ids: assignedIds })
         setUsers((p) => p.map((u) => (u.id === editing.id ? res.data.data : u)))
         toast.success('User updated')
       } else {
         const res = await api.post('/users', form)
+        if (form.role === 'WAITER' && assignedIds.length > 0) await api.put(`/users/${res.data.data.id}/tables`, { table_ids: assignedIds })
         setUsers((p) => [res.data.data, ...p])
         toast.success('User created')
       }
@@ -334,6 +358,33 @@ const Users: React.FC = () => {
               <option value="RECEPTION">Reception</option>
             </select>
           </div>
+          {form.role === 'WAITER' && (
+            <div>
+              <label className="form-label">Assigned tables</label>
+              <p className="text-xs text-gray-500 mb-2">
+                This waiter can only see and order for the ticked tables. Leave all unticked to allow every table.
+              </p>
+              {allTables.length === 0 ? (
+                <p className="text-xs text-gray-400">No tables found.</p>
+              ) : (
+                <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto">
+                  {allTables.map((t) => {
+                    const on = assignedIds.includes(t.id)
+                    return (
+                      <button
+                        type="button"
+                        key={t.id}
+                        onClick={() => toggleAssigned(t.id)}
+                        className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${on ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}
+                      >
+                        {t.table_number}
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )}
           {editing && (
             <div className="flex items-center gap-3">
               <input
