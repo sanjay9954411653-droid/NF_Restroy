@@ -13,6 +13,7 @@ import { io, Socket } from 'socket.io-client'
 import toast from 'react-hot-toast'
 import { api } from '../api/client'
 import { useOrderStore } from './useOrderStore'
+import { isIncomingPending } from '../lib/orderRounds'
 
 export interface TableRequest {
   id: string
@@ -42,6 +43,22 @@ const REQUEST_LABEL: Record<TableRequest['type'], string> = {
 // Two short beeps via the Web Audio API — no audio file needed. Browsers
 // generally require a prior user gesture (e.g. the login tap) before audio
 // is allowed to play, which the waiter app already has by the time this fires.
+// ── Customer orders (QR / WhatsApp / Zomato) waiting for a waiter to accept ──
+let seenIncoming: Set<string> | null = null
+const incomingIds = (): Set<string> =>
+  new Set(useOrderStore.getState().orders.filter(isIncomingPending).map((o) => o.id))
+
+function alertNewIncoming(before: Set<string>) {
+  const now = incomingIds()
+  if (seenIncoming === null) seenIncoming = before
+  const fresh = [...now].filter((id) => !seenIncoming!.has(id))
+  seenIncoming = new Set([...seenIncoming, ...now])
+  if (fresh.length === 0) return
+  if ('vibrate' in navigator) navigator.vibrate([400, 150, 400, 150, 400])
+  playAlertSound()
+  toast(`${fresh.length} new customer order${fresh.length > 1 ? 's' : ''} — open Orders to accept`, { icon: '🛎️', duration: 10000 })
+}
+
 function playAlertSound() {
   try {
     const AudioCtx = (window as any).AudioContext || (window as any).webkitAudioContext
@@ -168,7 +185,11 @@ export const useTableRequestsStore = create<TableRequestsState>((set, get) => ({
     let orderRefreshTimer: ReturnType<typeof setTimeout> | null = null
     const refreshOrders = () => {
       if (orderRefreshTimer) clearTimeout(orderRefreshTimer)
-      orderRefreshTimer = setTimeout(() => useOrderStore.getState().fetchOrders(), 300)
+      orderRefreshTimer = setTimeout(async () => {
+        const before = incomingIds()
+        await useOrderStore.getState().fetchOrders()
+        alertNewIncoming(before)
+      }, 300)
       window.dispatchEvent(new Event('kot-orders-changed')) // lets a "kitchen printer station" print new tickets
     }
     socket.on('ORDER_CREATED', refreshOrders)

@@ -45,3 +45,14 @@ export function isFullyServed(order: Order): boolean {
   const items = orderItemsOf(order)
   return items.length > 0 && items.every((i) => !!i.served_at)
 }
+
+/** Orders from customers (QR / WhatsApp / Zomato / online) that wait for staff to accept them. */
+export function isIncomingPending(order: Order): boolean {
+  return order.status === 'CREATED' && !['WAITER', 'RECEPTION'].includes(order.order_source)
+}
+
+export const SOURCE_LABEL: Record<string, string> = {
+  QR: 'QR order',
+  WHATSAPP: 'WhatsApp order',
+  ZOMATO: 'Zomato order',
+}

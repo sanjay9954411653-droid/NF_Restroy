@@ -2,7 +2,9 @@
  * MyOrdersPage — the waiter's view of today's active orders.
  *
  * The waiter normally leaves kitchen stages to the kitchen. Restaurants with no
- * kitchen screen use [Mark ready] on an "In kitchen" order instead. Flow:
+ * kitchen screen use [Mark ready] on an "In kitchen" order instead, and accept
+ * customer (QR / online) orders themselves. Flow:
+ *   0. "New customer orders" — tap [Accept] (or [Reject]); accepting sends the KOT.
  *   1. "Ready to serve"   — the kitchen finished a round; tap [Serve Order].
  *   2. "Awaiting payment" — the whole order is ready; tap [Collect Payment].
  *   3. "In kitchen"       — read-only progress, plus [Add] to send more items.
@@ -16,7 +18,7 @@ import { useOrderStore } from '../store/useOrderStore'
 import { ordersApi, paymentsApi, PaymentMethod } from '../api/endpoints'
 import { formatDistanceToNow } from 'date-fns'
 import type { Order, OrderStatus } from '../types'
-import { getReadyRounds, isFullyServed, orderItemsOf } from '../lib/orderRounds'
+import { getReadyRounds, isFullyServed, orderItemsOf, isIncomingPending, SOURCE_LABEL } from '../lib/orderRounds'
 import { usePayable } from '../lib/usePayable'
 
 const formatCurrency = (n: number) =>
@@ -423,16 +425,18 @@ const PaymentSheet: React.FC<PaymentSheetProps> = ({ order, onClose, onPaid }) =
 const MyOrdersPage: React.FC = () => {
   const payable = usePayable()
   const navigate = useNavigate()
-  const { orders, queue, isLoading, fetchOrders, serve, markRoundReady } = useOrderStore()
+  const { orders, queue, isLoading, fetchOrders, serve, markRoundReady, updateStatus } = useOrderStore()
   const [payingOrder, setPayingOrder] = useState<Order | null>(null)
   const [servingKey, setServingKey] = useState<string | null>(null)
   const [readyKey, setReadyKey] = useState<string | null>(null)       // round being saved
+  const [decidingId, setDecidingId] = useState<string | null>(null)
   const [confirmKey, setConfirmKey] = useState<string | null>(null)   // round awaiting a second tap
 
   useEffect(() => { fetchOrders() }, [fetchOrders])
 
+  const incomingOrders = orders.filter(isIncomingPending)
   const kitchenOrders = orders.filter(
-    (o) => ['CREATED', 'ACCEPTED', 'PREPARING'].includes(o.status)
+    (o) => ['CREATED', 'ACCEPTED', 'PREPARING'].includes(o.status) && !isIncomingPending(o)
   )
   const readyOrders = orders.filter((o) => o.status === 'READY')
   const readyRounds = orders.flatMap((o) => getReadyRounds(o))
@@ -470,12 +474,34 @@ const MyOrdersPage: React.FC = () => {
     }
   }
 
+  // Accept sends the order to the kitchen (and prints its KOT). Reject needs a second tap.
+  const handleDecision = async (order: Order, decision: 'ACCEPTED' | 'CANCELLED') => {
+    const key = `${order.id}-${decision}`
+    if (decision === 'CANCELLED' && confirmKey !== key) {
+      setConfirmKey(key)
+      setTimeout(() => setConfirmKey((k) => (k === key ? null : k)), 4000)
+      return
+    }
+    setConfirmKey(null)
+    setDecidingId(order.id)
+    try {
+      await updateStatus(order.id, decision)
+      toast.success(decision === 'ACCEPTED' ? 'Order accepted ✓' : 'Order rejected')
+      await fetchOrders()
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error?.message || 'Could not update the order')
+      fetchOrders()
+    } finally {
+      setDecidingId(null)
+    }
+  }
+
   const handlePaid = () => {
     setPayingOrder(null)
     fetchOrders()
   }
 
-  const totalActive = kitchenOrders.length + readyOrders.length
+  const totalActive = incomingOrders.length + kitchenOrders.length + readyOrders.length
 
   return (
     <div className="p-4 space-y-4">
@@ -519,6 +545,72 @@ const MyOrdersPage: React.FC = () => {
         </div>
       ) : (
         <>
+          {/* 0. New customer orders (QR / online) — waiter accepts or rejects */}
+          {incomingOrders.length > 0 && (
+            <section className="space-y-3">
+              <h2 className="text-sm font-semibold text-red-600 flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                New customer orders ({incomingOrders.length})
+              </h2>
+              {incomingOrders.map((order) => {
+                const items = orderItemsOf(order)
+                const deciding = decidingId === order.id
+                const rejecting = confirmKey === `${order.id}-CANCELLED`
+                return (
+                  <div key={order.id} className="card p-4 space-y-3 border-l-4 border-l-red-400">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="font-bold text-gray-900">
+                          {order.table?.table_number ? `Table ${order.table.table_number}` : (order.order_type === 'PARCEL' ? 'Pick-up' : order.order_type)}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          {order.order_number} · {formatDistanceToNow(new Date(order.created_at), { addSuffix: true })}
+                        </p>
+                      </div>
+                      <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-red-100 text-red-700">
+                        {SOURCE_LABEL[order.order_source] || 'Online order'}
+                      </span>
+                    </div>
+                    <ul className="text-sm text-gray-700 space-y-0.5">
+                      {items.map((it, i) => (
+                        <li key={it.id || i}>
+                          <span className="font-semibold">{it.quantity}×</span> {it.menu_item_name || 'Item'}
+                          {it.special_instructions && <span className="text-gray-400"> — {it.special_instructions}</span>}
+                        </li>
+                      ))}
+                    </ul>
+                    {order.special_instructions && (
+                      <p className="text-xs text-amber-700 bg-amber-50 rounded-lg px-2.5 py-1.5">Note: {order.special_instructions}</p>
+                    )}
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-500">{items.length} item{items.length !== 1 ? 's' : ''}</span>
+                      <span className="font-bold text-gray-900">{formatCurrency(payable(Number(order.total_amount)))}</span>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleDecision(order, 'ACCEPTED')}
+                        disabled={deciding}
+                        className="btn-primary flex-1 flex items-center justify-center gap-2 py-3 disabled:opacity-60"
+                      >
+                        <CheckCircleIcon className="w-5 h-5" />
+                        {deciding ? 'Saving…' : 'Accept'}
+                      </button>
+                      <button
+                        onClick={() => handleDecision(order, 'CANCELLED')}
+                        disabled={deciding}
+                        className={`px-4 py-3 rounded-xl text-sm font-semibold border disabled:opacity-60 ${
+                          rejecting ? 'bg-red-600 text-white border-red-600' : 'bg-white text-red-600 border-red-200'
+                        }`}
+                      >
+                        {rejecting ? 'Tap again' : 'Reject'}
+                      </button>
+                    </div>
+                  </div>
+                )
+              })}
+            </section>
+          )}
+
           {/* 1. Ready to serve — one card per finished round */}
           {readyRounds.length > 0 && (
             <section className="space-y-3">
@@ -621,7 +713,7 @@ const MyOrdersPage: React.FC = () => {
           {/* 3. In kitchen — read-only progress */}
           {kitchenOrders.length > 0 && (
             <section className="space-y-3">
-              {(readyRounds.length > 0 || readyOrders.length > 0) && (
+              {(incomingOrders.length > 0 || readyRounds.length > 0 || readyOrders.length > 0) && (
                 <h2 className="text-sm font-semibold text-gray-500">In kitchen ({kitchenOrders.length})</h2>
               )}
               {kitchenOrders.map((order) => {

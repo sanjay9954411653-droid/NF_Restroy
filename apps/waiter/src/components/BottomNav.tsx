@@ -10,13 +10,14 @@ import {
   UserCircleIcon as UserCircleSolid,
 } from '@heroicons/react/24/solid'
 import { useOrderStore } from '../store/useOrderStore'
-import { getReadyRounds } from '../lib/orderRounds'
+import { getReadyRounds, isIncomingPending } from '../lib/orderRounds'
 
 const BottomNav: React.FC = () => {
   const location = useLocation()
   const navigate = useNavigate()
   const { queue, orders } = useOrderStore()
   const readyToServe = orders.reduce((n, o) => n + getReadyRounds(o).length, 0)
+  const incoming = orders.filter(isIncomingPending).length // customer orders waiting to be accepted
 
   const tabs = [
     {
@@ -30,8 +31,8 @@ const BottomNav: React.FC = () => {
       path: '/orders',
       icon: ClipboardDocumentListIcon,
       activeIcon: ClipboardSolid,
-      badge: readyToServe + queue.length > 0 ? readyToServe + queue.length : undefined,
-      badgeColor: readyToServe > 0 ? 'bg-emerald-500' : 'bg-amber-500',
+      badge: readyToServe + queue.length + incoming > 0 ? readyToServe + queue.length + incoming : undefined,
+      badgeColor: incoming > 0 ? 'bg-red-500' : readyToServe > 0 ? 'bg-emerald-500' : 'bg-amber-500',
     },
     {
       label: 'Profile',
