@@ -15,6 +15,7 @@ import { useOrderStore } from '../store/useOrderStore'
 import { ordersApi } from '../api/endpoints'
 import { getErrorMessage } from '../api/client'
 import type { MenuItem } from '../types'
+import { searchMenu } from '../lib/menuSearch'
 
 const formatCurrency = (n: number) =>
   new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 }).format(n)
@@ -29,23 +30,26 @@ const OrderPage: React.FC = () => {
   const isAddMode = !!orderId
 
   const { categories, items, fetchAll, setReadyStock } = useMenuStore()
-  const { cart, tableNumber, orderType, notes, addItem, changeQty, removeItem, setNotes, clear, total, count } = useCartStore()
+  const { cart, tableNumber, orderType, notes, addItem, changeQty, removeItem, setNote, setNotes, clear, total, count } = useCartStore()
   const { submitOrder } = useOrderStore()
 
   const [activeCat, setActiveCat] = useState<string>('ALL')
   const [search, setSearch] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [reviewing, setReviewing] = useState(false)
+  const [noteOpen, setNoteOpen] = useState<string | null>(null)
 
   useEffect(() => { fetchAll() }, [fetchAll])
 
+  const categoryNameById = useMemo(() => new Map(categories.map((c) => [c.id, c.name])), [categories])
+
+  // While typing, search the whole menu (best match first); otherwise show the chosen category
   const filtered = useMemo(() => {
-    return items.filter((item) => {
-      const matchCat = activeCat === 'ALL' || (item.category_ids?.length ? item.category_ids : [item.category_id]).includes(activeCat)
-      const matchSearch = !search || item.name.toLowerCase().includes(search.toLowerCase())
-      return matchCat && matchSearch
-    })
-  }, [items, activeCat, search])
+    if (search.trim()) return searchMenu(items, search, categoryNameById)
+    return items.filter((item) =>
+      activeCat === 'ALL' || (item.category_ids?.length ? item.category_ids : [item.category_id]).includes(activeCat),
+    )
+  }, [items, activeCat, search, categoryNameById])
 
   // Ready-made item: batch finished -> orders for it go to the kitchen; restocked -> straight to the waiter
   const handleToggleBatch = async (item: MenuItem) => {
@@ -60,6 +64,15 @@ const OrderPage: React.FC = () => {
 
   const handleAdd = (item: MenuItem) => {
     addItem({ menu_item_id: item.id, name: item.name, price: item.price, quantity: 1 })
+  }
+
+  // Enter in the search box adds the top match when there is exactly one
+  const handleSearchEnter = () => {
+    if (filtered.length === 1) {
+      handleAdd(filtered[0])
+      toast.success(`Added ${filtered[0].name}`, { duration: 1200 })
+      setSearch('')
+    }
   }
 
   const handleSubmit = async () => {
@@ -137,6 +150,8 @@ const OrderPage: React.FC = () => {
           placeholder="Search dishes…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') handleSearchEnter() }}
+          enterKeyHint="done"
           className="input mt-2 text-sm"
         />
 
@@ -223,19 +238,6 @@ const OrderPage: React.FC = () => {
         })}
       </div>
 
-      {/* Order notes */}
-      {!isAddMode && (
-        <div className="px-4 pb-2 shrink-0">
-          <input
-            type="text"
-            placeholder="Order note (optional)"
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            className="input text-sm"
-          />
-        </div>
-      )}
-
       {/* Review bar */}
       <div className="px-4 pb-6 pt-2 shrink-0 bg-white border-t border-gray-100">
         <button
@@ -267,14 +269,50 @@ const OrderPage: React.FC = () => {
 
             <div className="flex-1 overflow-y-auto px-4 py-2 divide-y divide-gray-100">
               {cart.map((line) => (
-                <div key={`${line.menu_item_id}-${line.special_instructions || ''}`} className="py-3 flex items-center gap-3">
+                <div key={line.menu_item_id} className="py-3 flex items-center gap-3">
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-gray-900 truncate">{line.name}</p>
                     <p className="text-xs text-gray-500">
                       {formatCurrency(line.price)} × {line.quantity} = <span className="font-semibold text-gray-800">{formatCurrency(line.price * line.quantity)}</span>
                     </p>
-                    {line.special_instructions && (
-                      <p className="text-xs text-amber-600 mt-0.5">Note: {line.special_instructions}</p>
+                    {noteOpen === line.menu_item_id ? (
+                      <div className="mt-1.5 space-y-1.5">
+                        <input
+                          type="text"
+                          autoFocus
+                          value={line.special_instructions || ''}
+                          onChange={(e) => setNote(line.menu_item_id, e.target.value)}
+                          onKeyDown={(e) => { if (e.key === 'Enter') setNoteOpen(null) }}
+                          placeholder="e.g. less spicy, no onion"
+                          className="input text-xs py-1.5"
+                        />
+                        <div className="flex flex-wrap gap-1.5">
+                          {['Less spicy', 'Extra spicy', 'No onion', 'Less oil'].map((q) => (
+                            <button
+                              key={q}
+                              type="button"
+                              onClick={() => {
+                                const cur = line.special_instructions || ''
+                                if (!cur.toLowerCase().includes(q.toLowerCase())) setNote(line.menu_item_id, cur ? `${cur}, ${q}` : q)
+                              }}
+                              className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 text-[11px]"
+                            >
+                              {q}
+                            </button>
+                          ))}
+                          <button type="button" onClick={() => setNoteOpen(null)} className="px-2 py-0.5 rounded-full bg-indigo-600 text-white text-[11px]">
+                            Done
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setNoteOpen(line.menu_item_id)}
+                        className={`text-xs mt-0.5 ${line.special_instructions ? 'text-amber-600' : 'text-indigo-600'}`}
+                      >
+                        {line.special_instructions ? `Note: ${line.special_instructions} · edit` : '+ Add note'}
+                      </button>
                     )}
                   </div>
                   <div className="flex items-center border border-gray-200 rounded-xl overflow-hidden shrink-0">
@@ -291,10 +329,17 @@ const OrderPage: React.FC = () => {
                   </button>
                 </div>
               ))}
-              {!isAddMode && notes && (
+              {!isAddMode && (
                 <div className="py-3">
-                  <p className="text-xs text-gray-500">Order note</p>
-                  <p className="text-sm text-gray-800">{notes}</p>
+                  <label className="text-xs text-gray-500" htmlFor="order-note">Order note (for the whole order)</label>
+                  <input
+                    id="order-note"
+                    type="text"
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    placeholder="e.g. serve together, birthday table"
+                    className="input text-sm mt-1"
+                  />
                 </div>
               )}
             </div>
