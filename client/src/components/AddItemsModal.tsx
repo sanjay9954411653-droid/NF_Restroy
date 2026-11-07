@@ -14,6 +14,7 @@ import {
   MagnifyingGlassIcon,
   ShoppingCartIcon,
 } from '@heroicons/react/24/outline'
+import { inCategory } from '../utils/menuCategories'
 
 interface CartLine {
   menu_item_id: string
@@ -59,7 +60,7 @@ const AddItemsModal: React.FC<AddItemsModalProps> = ({ orderId, orderNumber, onC
 
   const filtered = useMemo(() => {
     return menuItems.filter((m) => {
-      const matchCat = activeCat === 'ALL' || m.category_id === activeCat
+      const matchCat = activeCat === 'ALL' || inCategory(m, activeCat)
       const matchSearch = !search || m.name.toLowerCase().includes(search.toLowerCase())
       return matchCat && matchSearch
     })

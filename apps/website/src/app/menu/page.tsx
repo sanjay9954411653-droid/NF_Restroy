@@ -20,7 +20,9 @@ export default async function MenuPage() {
   const categories = (menu?.categories || []).filter((c) => c.is_active);
   const items = (menu?.items || []).filter((i) => i.is_active);
   const ordering = menu?.restaurant?.ordering_enabled !== false;
-  const uncategorized = items.filter((i) => !categories.some((c) => c.id === i.category_id));
+  const itemCats = (i: { category_id: string | null; category_ids?: string[] }) =>
+    i.category_ids && i.category_ids.length > 0 ? i.category_ids : i.category_id ? [i.category_id] : [];
+  const uncategorized = items.filter((i) => !categories.some((c) => itemCats(i).includes(c.id)));
 
   return (
     <main className="mx-auto w-full max-w-4xl flex-1 px-6 py-12">
@@ -37,7 +39,7 @@ export default async function MenuPage() {
       ) : null}
 
       {categories.map((cat) => {
-        const catItems = items.filter((i) => i.category_id === cat.id);
+        const catItems = items.filter((i) => itemCats(i).includes(cat.id));
         if (catItems.length === 0) return null;
         return <MenuSection key={cat.id} title={cat.name} items={catItems} ordering={ordering} />;
       })}

@@ -21,6 +21,7 @@ import {
   PrinterIcon,
   CheckCircleIcon,
 } from '@heroicons/react/24/outline'
+import { inCategory } from '../utils/menuCategories'
 
 interface CartLine {
   menu_item_id: string
@@ -128,7 +129,7 @@ const OrderForm: React.FC<OrderFormProps> = ({ order, initialTableId, onClose, o
 
   const filteredMenu = useMemo(() => {
     return menuItems.filter((m) => {
-      const matchCat = activeCat === 'ALL' || m.category_id === activeCat
+      const matchCat = activeCat === 'ALL' || inCategory(m, activeCat)
       const matchSearch = !search || m.name.toLowerCase().includes(search.toLowerCase())
       return matchCat && matchSearch
     })

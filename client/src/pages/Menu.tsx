@@ -11,6 +11,7 @@ import Loading from '../components/Loading'
 import Modal from '../components/Modal'
 import { MenuCategory, MenuItem } from '../types/menu'
 import { formatCurrency } from '../lib/utils'
+import { inCategory } from '../utils/menuCategories'
 import { priceUnitSuffix } from '../lib/weight'
 import { optimizeImageUrl } from '../lib/imageUpload'
 import {
@@ -107,6 +108,7 @@ const Menu: React.FC = () => {
   const [editingCat, setEditingCat] = useState<MenuCategory | undefined>()
   const [catName, setCatName] = useState('')
   const [catDesc, setCatDesc] = useState('')
+  const [catShowToCustomers, setCatShowToCustomers] = useState(true)
   const [catSaving, setCatSaving] = useState(false)
   const [togglingId, setTogglingId] = useState<string | null>(null)
 
@@ -137,7 +139,7 @@ const Menu: React.FC = () => {
 
   const filtered = useMemo(() => {
     return items.filter((item) => {
-      const matchCat = catFilter === 'ALL' || item.category_id === catFilter
+      const matchCat = catFilter === 'ALL' || inCategory(item, catFilter)
       const matchAvail =
         availFilter === 'all' ||
         (availFilter === 'available' && item.is_active) ||
@@ -152,10 +154,10 @@ const Menu: React.FC = () => {
   const grouped = useMemo(() => {
     const map: Record<string, MenuItem[]> = {}
     categories.forEach((c) => {
-      const list = filtered.filter((i) => i.category_id === c.id)
+      const list = filtered.filter((i) => inCategory(i, c.id))
       if (list.length) map[c.name] = list
     })
-    const rest = filtered.filter((i) => !categories.some((c) => c.id === i.category_id))
+    const rest = filtered.filter((i) => !categories.some((c) => inCategory(i, c.id)))
     if (rest.length) map['Uncategorized'] = rest
     return map
   }, [filtered, categories])
@@ -185,8 +187,9 @@ const Menu: React.FC = () => {
   const moveItem = (id: string, dir: 'up' | 'down' | 'top') => {
     const item = items.find((i) => i.id === id)
     if (!item) return
-    setItems((prev) => moveWithin(prev, prev.findIndex((i) => i.id === id), dir, (x) => x.category_id === item.category_id))
-    setDirtyItemCats((prev) => new Set(prev).add(item.category_id))
+    // Items can sit in several categories: move within the category being rearranged
+    setItems((prev) => moveWithin(prev, prev.findIndex((i) => i.id === id), dir, (x) => inCategory(x, reorderCat)))
+    setDirtyItemCats((prev) => new Set(prev).add(reorderCat))
   }
 
   const saveOrder = async () => {
@@ -196,7 +199,7 @@ const Menu: React.FC = () => {
         await api.put('/menus/reorder', { type: 'categories', ids: categories.map((c) => c.id) })
       }
       for (const catId of dirtyItemCats) {
-        const ids = items.filter((i) => i.category_id === catId).map((i) => i.id)
+        const ids = items.filter((i) => inCategory(i, catId)).map((i) => i.id)
         if (ids.length) await api.put('/menus/reorder', { type: 'items', ids })
       }
       toast.success('Menu order saved')
@@ -210,7 +213,7 @@ const Menu: React.FC = () => {
   }
 
   const hasReorderChanges = catsDirty || dirtyItemCats.size > 0
-  const reorderItems = items.filter((i) => i.category_id === reorderCat)
+  const reorderItems = items.filter((i) => inCategory(i, reorderCat))
 
   const handleDelete = async (id: string) => {
     if (!confirm('Delete this menu item?')) return
@@ -298,11 +301,11 @@ const Menu: React.FC = () => {
     setCatSaving(true)
     try {
       if (editingCat) {
-        const res = await api.put(`/menus/categories/${editingCat.id}`, { name: catName, description: catDesc })
+        const res = await api.put(`/menus/categories/${editingCat.id}`, { name: catName, description: catDesc, show_to_customers: catShowToCustomers })
         setCategories((p) => p.map((c) => (c.id === editingCat.id ? res.data.data : c)))
         toast.success('Category updated')
       } else {
-        const res = await api.post('/menus/categories', { name: catName, description: catDesc, display_order: categories.length + 1 })
+        const res = await api.post('/menus/categories', { name: catName, description: catDesc, display_order: categories.length + 1, show_to_customers: catShowToCustomers })
         setCategories((p) => [...p, res.data.data])
         toast.success('Category created')
       }
@@ -315,11 +318,12 @@ const Menu: React.FC = () => {
   }
 
   const handleDeleteCat = async (id: string) => {
-    if (!confirm('Delete this category? Items in it will be uncategorized.')) return
+    if (!confirm('Delete this category? Items that are only in this category will be deleted. Items that are also in other categories stay there.')) return
     try {
       await api.delete(`/menus/categories/${id}`)
       setCategories((p) => p.filter((c) => c.id !== id))
       toast.success('Category deleted')
+      await fetchAll()
     } catch (err) {
       toast.error(getErrorMessage(err))
     }
@@ -348,7 +352,7 @@ const Menu: React.FC = () => {
           <Button
             variant="outline"
             leftIcon={<TagIcon className="w-4 h-4" />}
-            onClick={() => { setEditingCat(undefined); setCatName(''); setCatDesc(''); setCatFormOpen(true) }}
+            onClick={() => { setEditingCat(undefined); setCatName(''); setCatDesc(''); setCatShowToCustomers(true); setCatFormOpen(true) }}
           >
             Add Category
           </Button>
@@ -379,7 +383,7 @@ const Menu: React.FC = () => {
                   isFirst={i === 0}
                   isLast={i === categories.length - 1}
                   title={c.name}
-                  subtitle={`${items.filter((x) => x.category_id === c.id).length} items`}
+                  subtitle={`${items.filter((x) => inCategory(x, c.id)).length} items`}
                   onMove={(dir) => moveCategory(c.id, dir)}
                 />
               ))}
@@ -492,11 +496,16 @@ const Menu: React.FC = () => {
             >
               <Switch on={cat.is_active} disabled={togglingId === cat.id} onClick={() => handleToggleCat(cat)} label={`${cat.name} on/off`} />
               <span className="font-medium text-gray-700">{cat.name}</span>
+              {cat.show_to_customers === false && (
+                <span className="text-[10px] font-semibold uppercase tracking-wide bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded" title="Hidden from customers: only on POS and staff side">
+                  Staff only
+                </span>
+              )}
               <span className="text-gray-400 text-xs">
-                {items.filter((i) => i.category_id === cat.id).length}
+                {items.filter((i) => inCategory(i, cat.id)).length}
               </span>
               <button
-                onClick={() => { setEditingCat(cat); setCatName(cat.name); setCatDesc(cat.description || ''); setCatFormOpen(true) }}
+                onClick={() => { setEditingCat(cat); setCatName(cat.name); setCatDesc(cat.description || ''); setCatShowToCustomers(cat.show_to_customers !== false); setCatFormOpen(true) }}
                 className="text-gray-400 hover:text-indigo-600 transition-colors"
               >
                 <PencilIcon className="w-3 h-3" />
@@ -684,6 +693,17 @@ const Menu: React.FC = () => {
             onChange={(e) => setCatDesc(e.target.value)}
             fullWidth
           />
+          <div className="flex items-start gap-3 rounded-lg border border-gray-200 p-3">
+            <Switch on={catShowToCustomers} onClick={() => setCatShowToCustomers((v) => !v)} label="Show to customers" />
+            <div>
+              <p className="text-sm font-medium text-gray-800">Show to customers</p>
+              <p className="text-xs text-gray-500 mt-0.5">
+                {catShowToCustomers
+                  ? 'On: shown everywhere (customer menu, website, POS and staff).'
+                  : 'Off: only on the POS and staff side. Customers never see it.'}
+              </p>
+            </div>
+          </div>
         </form>
       </Modal>
     </div>

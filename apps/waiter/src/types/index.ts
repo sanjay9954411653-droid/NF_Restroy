@@ -37,11 +37,13 @@ export interface MenuCategory {
   name: string
   display_order: number
   is_active: boolean
+  show_to_customers?: boolean
 }
 
 export interface MenuItem {
   id: string
   category_id: string
+  category_ids?: string[]   // every category the item is listed under
   name: string
   description?: string
   price: number

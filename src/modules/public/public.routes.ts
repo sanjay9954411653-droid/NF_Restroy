@@ -58,8 +58,15 @@ router.get('/menu/:slug', async (req: Request, res: Response, next: NextFunction
       menuRepository.findMenuItemsByRestaurantId(restaurant.id),
     ]);
 
-    const activeCategoryIds = new Set(categories.filter((c) => c.is_active).map((c) => c.id));
-    const activeItems = items.filter((i) => i.is_active && activeCategoryIds.has(i.category_id));
+    // Customers only see categories that are switched on AND set to "show to customers".
+    // An item shows up if at least one of its categories qualifies; only those categories are reported.
+    const activeCategoryIds = new Set(categories.filter((c) => c.is_active && c.show_to_customers).map((c) => c.id));
+    const activeItems = items
+      .filter((i) => i.is_active && i.category_ids.some((id) => activeCategoryIds.has(id)))
+      .map((i) => {
+        const visibleIds = i.category_ids.filter((id) => activeCategoryIds.has(id));
+        return { ...i, category_ids: visibleIds, category_id: visibleIds[0] };
+      });
 
     // ── Attach modifier groups with options to each menu item ────────────
     const itemIds = activeItems.map((i) => i.id);
@@ -153,7 +160,7 @@ router.get('/menu/:slug', async (req: Request, res: Response, next: NextFunction
             extra_charges_amount: Number(restaurant.extra_charges_amount ?? 0),
           },
         },
-        categories: categories.filter((c) => c.is_active),
+        categories: categories.filter((c) => c.is_active && c.show_to_customers),
         items: itemsWithModifiers,
       }),
     );
@@ -405,6 +412,10 @@ router.post('/order/:slug', publicOrderRateLimiter, async (req: Request, res: Re
     for (const item of payload.items) {
       const menuItem = await menuRepository.findMenuItemById(item.menu_item_id);
       if (!menuItem || menuItem.restaurant_id !== restaurantId || !menuItem.is_active) {
+        throw new BadRequestError('Menu item not available');
+      }
+      // Items that only live in staff-only (or switched-off) categories can't be ordered by customers
+      if (!(await menuRepository.isItemVisibleToCustomers(menuItem.id))) {
         throw new BadRequestError('Menu item not available');
       }
       if ((menuItem as any).price_unit && (menuItem as any).price_unit !== 'PIECE') {

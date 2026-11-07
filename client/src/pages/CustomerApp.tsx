@@ -39,6 +39,7 @@ import {
   type OrdersView,
   type SavedOrderLine,
 } from '../components/CustomerMenuDrawer'
+import { inCategory, itemCategoryIds } from '../utils/menuCategories'
 
 // ── Dedicated public API — no auth token, no logout interceptor ──────────────
 const publicApi = axios.create({
@@ -373,7 +374,7 @@ const CustomerApp: React.FC = () => {
   // ── Filtered menu ──────────────────────────────────────────────────────────
   const filtered = useMemo(() => {
     return items.filter((item) => {
-      const matchCat = selectedCategory === 'ALL' || item.category_id === selectedCategory
+      const matchCat = selectedCategory === 'ALL' || inCategory(item, selectedCategory)
       const matchSearch = !search || item.name.toLowerCase().includes(search.toLowerCase())
       return matchCat && matchSearch && matchesDiet(diet, item.is_vegetarian)
     })
@@ -395,10 +396,10 @@ const CustomerApp: React.FC = () => {
   // Menu list grouped by category, in category order
   const sections = useMemo(() => {
     const result = categories
-      .map((cat) => ({ id: cat.id, name: cat.name, list: filtered.filter((i) => i.category_id === cat.id) }))
+      .map((cat) => ({ id: cat.id, name: cat.name, list: filtered.filter((i) => inCategory(i, cat.id)) }))
       .filter((sec) => sec.list.length > 0)
     const known = new Set(categories.map((c) => c.id))
-    const other = filtered.filter((i) => !known.has(i.category_id))
+    const other = filtered.filter((i) => !itemCategoryIds(i).some((id) => known.has(id)))
     if (other.length > 0) result.push({ id: 'other', name: 'More', list: other })
     return result
   }, [categories, filtered])

@@ -128,9 +128,13 @@ export class OrdersService {
     if (!menuItem.is_active) {
       throw new BadRequestError(`${menuItem.name} is currently unavailable`);
     }
-    const category = await menuRepository.findCategoryById(menuItem.category_id);
-    if (category && !category.is_active) {
-      throw new BadRequestError(`${menuItem.name} is currently unavailable (${category.name} is off)`);
+    // Unavailable only when EVERY category the item is listed under is switched off
+    const categories = await Promise.all(
+      (menuItem.category_ids?.length ? menuItem.category_ids : [menuItem.category_id]).map((id) => menuRepository.findCategoryById(id))
+    );
+    const found = categories.filter((c): c is NonNullable<typeof c> => !!c);
+    if (found.length > 0 && found.every((c) => !c.is_active)) {
+      throw new BadRequestError(`${menuItem.name} is currently unavailable (${found[0].name} is off)`);
     }
 
     // By-weight items (price per kg / per 100 g) are priced here from the weight;

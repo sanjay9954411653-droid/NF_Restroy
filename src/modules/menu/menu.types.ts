@@ -5,6 +5,8 @@ export const CreateMenuCategoryRequestSchema = z.object({
   description: z.string().max(1000).optional(),
   display_order: z.number().int().min(0).default(0),
   is_active: z.boolean().default(true),
+  // true = shown everywhere (incl. customers); false = POS / staff side only
+  show_to_customers: z.boolean().default(true),
 });
 
 export const UpdateMenuCategoryRequestSchema = z.object({
@@ -12,6 +14,7 @@ export const UpdateMenuCategoryRequestSchema = z.object({
   description: z.string().max(1000).optional(),
   display_order: z.number().int().min(0).optional(),
   is_active: z.boolean().optional(),
+  show_to_customers: z.boolean().optional(),
 });
 
 // Image URL: https only (blocks javascript:/data: URLs). Empty string clears it.
@@ -23,8 +26,12 @@ const imageUrlSchema = z
   .nullable()
   .optional();
 
+const categoryIdsSchema = z.array(z.string().uuid('Category ID must be a valid UUID')).min(1, 'Pick at least one category').max(20);
+
 export const CreateMenuItemRequestSchema = z.object({
-  category_id: z.string().uuid('Category ID must be a valid UUID'),
+  // Send category_ids (one or more). category_id is still accepted for older clients.
+  category_ids: categoryIdsSchema.optional(),
+  category_id: z.string().uuid('Category ID must be a valid UUID').optional(),
   name: z.string().min(2, 'Menu item name must be at least 2 characters').max(255, 'Menu item name must be less than 255 characters'),
   description: z.string().max(1000).optional(),
   price: z.number().positive('Price must be greater than 0'),
@@ -37,9 +44,13 @@ export const CreateMenuItemRequestSchema = z.object({
   is_featured: z.boolean().default(false),
   skip_kitchen: z.boolean().default(false), // ready-made item: goes straight to the waiter, not the kitchen
   ready_in_stock: z.boolean().default(true), // FALSE = batch finished, item goes to the kitchen again
+}).refine((v) => (v.category_ids && v.category_ids.length > 0) || !!v.category_id, {
+  message: 'Pick at least one category',
+  path: ['category_ids'],
 });
 
 export const UpdateMenuItemRequestSchema = z.object({
+  category_ids: categoryIdsSchema.optional(),
   category_id: z.string().uuid('Category ID must be a valid UUID').optional(),
   name: z.string().min(2, 'Menu item name must be at least 2 characters').max(255, 'Menu item name must be less than 255 characters').optional(),
   description: z.string().max(1000).optional(),
@@ -78,6 +89,7 @@ export interface MenuCategory {
   description?: string;
   display_order: number;
   is_active: boolean;
+  show_to_customers: boolean;
   created_at: Date;
   updated_at: Date;
 }
@@ -85,7 +97,8 @@ export interface MenuCategory {
 export interface MenuItem {
   id: string;
   restaurant_id: string;
-  category_id: string;
+  category_id: string; // main category (first of category_ids)
+  category_ids: string[]; // every category the item is listed under
   name: string;
   description?: string;
   price: number;

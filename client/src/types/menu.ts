@@ -5,6 +5,8 @@ export interface MenuCategory {
   description?: string
   display_order: number
   is_active: boolean
+  /** true (default) = shown everywhere; false = only on the POS / staff side, never to customers */
+  show_to_customers?: boolean
   created_at: string
   updated_at: string
 }
@@ -12,7 +14,10 @@ export interface MenuCategory {
 export interface MenuItem {
   id: string
   restaurant_id: string
+  /** Main category (first of category_ids) */
   category_id: string
+  /** Every category the item is listed under */
+  category_ids?: string[]
   name: string
   description?: string
   price: number

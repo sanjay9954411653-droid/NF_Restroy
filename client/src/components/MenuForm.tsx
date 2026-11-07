@@ -24,7 +24,9 @@ const MenuForm: React.FC<MenuFormProps> = ({ menuItem, onClose, onSave }) => {
   const [price, setPrice] = useState(Number(menuItem?.price) || 0);
   const [priceUnit, setPriceUnit] = useState<'PIECE' | 'KG' | '100G'>(menuItem?.price_unit || 'PIECE');
   const [piecePrice, setPiecePrice] = useState(menuItem?.piece_price ? String(Number(menuItem.piece_price)) : '');
-  const [categoryId, setCategoryId] = useState(menuItem?.category_id || '');
+  const [categoryIds, setCategoryIds] = useState<string[]>(
+    menuItem?.category_ids?.length ? menuItem.category_ids : menuItem?.category_id ? [menuItem.category_id] : []
+  );
   const [prepTime, setPrepTime] = useState(menuItem?.prep_time_minutes || 15);
   const [isVegetarian, setIsVegetarian] = useState(menuItem?.is_vegetarian ?? false);
   const [isActive, setIsActive] = useState(menuItem?.is_active ?? true);
@@ -50,7 +52,7 @@ const MenuForm: React.FC<MenuFormProps> = ({ menuItem, onClose, onSave }) => {
       setPrice(Number(menuItem.price));
       setPriceUnit(menuItem.price_unit || 'PIECE');
       setPiecePrice(menuItem.piece_price ? String(Number(menuItem.piece_price)) : '');
-      setCategoryId(menuItem.category_id);
+      setCategoryIds(menuItem.category_ids?.length ? menuItem.category_ids : [menuItem.category_id]);
       setPrepTime(menuItem.prep_time_minutes);
       setIsVegetarian(menuItem.is_vegetarian);
       setIsActive(menuItem.is_active);
@@ -131,7 +133,7 @@ const MenuForm: React.FC<MenuFormProps> = ({ menuItem, onClose, onSave }) => {
     const newErrors: Record<string, string> = {};
     if (!name.trim()) newErrors.name = 'Name is required.';
     if (!(price > 0)) newErrors.price = 'Price must be positive.';
-    if (!categoryId) newErrors.categoryId = 'Category is required.';
+    if (categoryIds.length === 0) newErrors.categoryId = 'Pick at least one category.';
     if (prepTime <= 0) newErrors.prepTime = 'Prep time must be at least 1 minute.';
     if (imageUrl.trim() && !/^https:\/\//i.test(imageUrl.trim())) newErrors.imageUrl = 'Image link must start with https://';
     setErrors(newErrors);
@@ -155,7 +157,7 @@ const MenuForm: React.FC<MenuFormProps> = ({ menuItem, onClose, onSave }) => {
     if (!validate()) return;
 
     const itemData = {
-      category_id: categoryId,
+      category_ids: categoryIds, // first one is the main category
       name,
       description,
       price: Number(price),
@@ -227,19 +229,37 @@ const MenuForm: React.FC<MenuFormProps> = ({ menuItem, onClose, onSave }) => {
         <h2 className="text-2xl font-bold mb-4">{menuItem ? 'Edit Menu Item' : 'Create New Menu Item'}</h2>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700">Category</label>
-            <select
-              value={categoryId}
-              onChange={(e) => setCategoryId(e.target.value)}
-              className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
-            >
-              <option value="">Select or create category</option>
-              {categories.map((category) => (
-                <option key={category.id} value={category.id}>
-                  {category.name}
-                </option>
-              ))}
-            </select>
+            <label className="block text-sm font-medium text-gray-700">Categories</label>
+            <p className="text-xs text-gray-500 mb-1">Pick one or more. The item shows under each category you tick.</p>
+            {categories.length === 0 ? (
+              <p className="text-sm text-gray-500">No categories yet. Add a category first.</p>
+            ) : (
+              <div className="mt-1 max-h-44 overflow-y-auto border border-gray-300 rounded-md divide-y divide-gray-100">
+                {categories.map((category) => {
+                  const checked = categoryIds.includes(category.id);
+                  return (
+                    <label key={category.id} className="flex items-center gap-2 px-3 py-2 text-sm cursor-pointer hover:bg-gray-50">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() =>
+                          setCategoryIds((prev) =>
+                            prev.includes(category.id) ? prev.filter((id) => id !== category.id) : [...prev, category.id]
+                          )
+                        }
+                        className="h-4 w-4 rounded border-gray-300"
+                      />
+                      <span className="text-gray-800">{category.name}</span>
+                      {category.show_to_customers === false && (
+                        <span className="ml-auto text-[10px] font-semibold uppercase tracking-wide bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">
+                          Staff only
+                        </span>
+                      )}
+                    </label>
+                  );
+                })}
+              </div>
+            )}
             {errors.categoryId && <p className="text-red-500 text-sm mt-1">{errors.categoryId}</p>}
           </div>
           <div>

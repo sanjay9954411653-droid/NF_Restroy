@@ -129,6 +129,7 @@ export interface MenuModifierGroup {
 export interface MenuItem {
   id: string;
   category_id: string | null;
+  category_ids?: string[];
   name: string;
   description: string | null;
   price: number;

@@ -175,7 +175,7 @@ export class WhatsAppService {
     // ── Handle help / menu request ──────────────────────────────────────────
     const isMenuRequest = /\b(menu|items|what.*have|show.*menu|list)\b/i.test(text);
     if (isMenuRequest || text.length < 3) {
-      const menuItems = await menuRepository.findMenuItemsByRestaurantId(restaurantId);
+      const menuItems = await menuRepository.findCustomerVisibleMenuItems(restaurantId);
       const summary = this.buildMenuSummary(menuItems);
       return {
         reply: (
@@ -188,7 +188,7 @@ export class WhatsAppService {
     }
 
     // ── Parse order ─────────────────────────────────────────────────────────
-    const menuItems = await menuRepository.findMenuItemsByRestaurantId(restaurantId);
+    const menuItems = await menuRepository.findCustomerVisibleMenuItems(restaurantId);
     const parsedItems = this.parseOrderText(text, menuItems);
 
     if (parsedItems.length === 0) {

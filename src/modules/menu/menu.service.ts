@@ -40,14 +40,14 @@ export class MenuService {
   }
 
   async createCategory(restaurantId: string, payload: CreateMenuCategoryRequest): Promise<MenuCategory> {
-    const { name, description, display_order, is_active } = payload;
+    const { name, description, display_order, is_active, show_to_customers } = payload;
     const validatedName = this.validateCategoryName(name);
 
     if (await menuRepository.categoryNameExists(restaurantId, validatedName)) {
       throw new ConflictError('Menu category name already exists for this restaurant');
     }
 
-    return menuRepository.createCategory(restaurantId, validatedName, description ?? null, display_order, is_active);
+    return menuRepository.createCategory(restaurantId, validatedName, description ?? null, display_order, is_active, show_to_customers ?? true);
   }
 
   async getCategory(categoryId: string): Promise<MenuCategory> {
@@ -85,6 +85,9 @@ export class MenuService {
     if (payload.is_active !== undefined) {
       updates.is_active = payload.is_active;
     }
+    if (payload.show_to_customers !== undefined) {
+      updates.show_to_customers = payload.show_to_customers;
+    }
 
     const updated = await menuRepository.updateCategory(categoryId, updates);
     if (!updated) {
@@ -105,22 +108,35 @@ export class MenuService {
     }
   }
 
-  async createMenuItem(restaurantId: string, payload: CreateMenuItemRequest): Promise<MenuItem> {
-    const { category_id, name, description, price, prep_time_minutes, is_vegetarian, is_active, display_order, image_url, is_featured, price_unit, skip_kitchen, ready_in_stock } = payload;
-    const validatedName = this.validateMenuItemName(name);
-
-    const category = await this.getCategory(category_id);
-    if (category.restaurant_id !== restaurantId) {
+  /** category_ids (new) or category_id (old clients) -> unique list; first = main category. */
+  private async resolveCategoryIds(restaurantId: string, ids: string[]): Promise<string[]> {
+    const unique = Array.from(new Set(ids));
+    if (unique.length === 0) {
+      throw new BadRequestError('Pick at least one category');
+    }
+    const owned = await menuRepository.countOwned('menu_categories', restaurantId, unique);
+    if (owned !== unique.length) {
       throw new BadRequestError('Menu category does not belong to this restaurant');
     }
+    return unique;
+  }
+
+  async createMenuItem(restaurantId: string, payload: CreateMenuItemRequest): Promise<MenuItem> {
+    const { name, description, price, prep_time_minutes, is_vegetarian, is_active, display_order, image_url, is_featured, price_unit, skip_kitchen, ready_in_stock } = payload;
+    const validatedName = this.validateMenuItemName(name);
+
+    const categoryIds = await this.resolveCategoryIds(
+      restaurantId,
+      payload.category_ids ?? (payload.category_id ? [payload.category_id] : [])
+    );
 
     if (await menuRepository.menuItemNameExists(restaurantId, validatedName)) {
       throw new ConflictError('Menu item name already exists for this restaurant');
     }
 
-    return menuRepository.createMenuItem(
+    const created = await menuRepository.createMenuItem(
       restaurantId,
-      category_id,
+      categoryIds[0],
       validatedName,
       description ?? null,
       price,
@@ -134,6 +150,8 @@ export class MenuService {
       skip_kitchen ?? false,
       ready_in_stock ?? true
     );
+    await menuRepository.setItemCategories(created.id, restaurantId, categoryIds);
+    return this.getMenuItem(created.id);
   }
 
   async getMenuItem(menuItemId: string): Promise<MenuItem> {
@@ -155,12 +173,12 @@ export class MenuService {
     }
 
     const updates: any = {};
-    if (payload.category_id !== undefined) {
-      const category = await this.getCategory(payload.category_id);
-      if (category.restaurant_id !== restaurantId) {
-        throw new BadRequestError('Menu category does not belong to this restaurant');
-      }
-      updates.category_id = payload.category_id;
+    let newCategoryIds: string[] | null = null;
+    if (payload.category_ids !== undefined || payload.category_id !== undefined) {
+      newCategoryIds = await this.resolveCategoryIds(
+        restaurantId,
+        payload.category_ids ?? (payload.category_id ? [payload.category_id] : [])
+      );
     }
     if (payload.name !== undefined) {
       const validatedName = this.validateMenuItemName(payload.name);
@@ -206,6 +224,10 @@ export class MenuService {
     const updated = await menuRepository.updateMenuItem(menuItemId, updates);
     if (!updated) {
       throw new NotFoundError('Menu item not found');
+    }
+    if (newCategoryIds) {
+      await menuRepository.setItemCategories(menuItemId, restaurantId, newCategoryIds);
+      return this.getMenuItem(menuItemId);
     }
     return updated;
   }

@@ -39,7 +39,7 @@ const OrderPage: React.FC = () => {
 
   const filtered = useMemo(() => {
     return items.filter((item) => {
-      const matchCat = activeCat === 'ALL' || item.category_id === activeCat
+      const matchCat = activeCat === 'ALL' || (item.category_ids?.length ? item.category_ids : [item.category_id]).includes(activeCat)
       const matchSearch = !search || item.name.toLowerCase().includes(search.toLowerCase())
       return matchCat && matchSearch
     })
