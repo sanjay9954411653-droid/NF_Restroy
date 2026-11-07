@@ -17,7 +17,12 @@ interface TopItem {
   total_quantity: number
   total_revenue: number
   total_weight_grams: number
+  tables?: { table_id: string | null; table_name: string; quantity: number; orders: number }[]
 }
+
+const tableLabel = (t: { table_name: string }) => (t.table_name === 'No table' ? 'No table' : `Table ${t.table_name}`)
+const tablesText = (it: TopItem) =>
+  (it.tables || []).map((t) => `${tableLabel(t)} ×${t.quantity}`).join(', ')
 
 type SortKey = 'quantity' | 'revenue'
 
@@ -44,7 +49,7 @@ const TopItemsReport: React.FC = () => {
   const latest = useRef(0)
 
   const load = useCallback(async () => {
-    const params: Record<string, string | number> = { limit: 10, sort }
+    const params: Record<string, string | number> = { limit: 10, sort, by_table: 1 }
     let label = 'All time'
     if (range !== 'all') {
       const { from, to } = range === 'custom' ? { from: customFrom, to: customTo } : rangeDates(range)
@@ -87,15 +92,16 @@ const TopItemsReport: React.FC = () => {
     {
       name: 'Top selling items',
       note: `Period: ${periodText} · ranked by ${sort === 'revenue' ? 'revenue' : 'quantity'} · cancelled orders not counted`,
-      headers: ['#', 'Item', 'Quantity sold', 'Weight sold', 'Revenue'],
+      headers: ['#', 'Item', 'Quantity sold', 'Weight sold', 'Revenue', 'Ordered from tables'],
       rows: items.map((it, i) => [
         i + 1,
         it.name,
         it.total_quantity,
         it.total_weight_grams > 0 ? formatWeight(it.total_weight_grams) : '',
         it.total_revenue,
+        tablesText(it),
       ]),
-      totals: ['', `Top ${items.length} items`, totalSold, '', totalRevenue],
+      totals: ['', `Top ${items.length} items`, totalSold, '', totalRevenue, ''],
       money: [4],
     },
   ]
@@ -232,6 +238,7 @@ const TopItemsReport: React.FC = () => {
                     <th>Item</th>
                     <th className="text-right">Sold</th>
                     <th className="text-right">Revenue</th>
+                    <th>Ordered from tables</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -250,6 +257,22 @@ const TopItemsReport: React.FC = () => {
                         )}
                       </td>
                       <td className="text-right font-semibold">{formatCurrency(it.total_revenue)}</td>
+                      <td>
+                        <div className="flex flex-wrap gap-1.5">
+                          {(it.tables || []).slice(0, 5).map((t) => (
+                            <span
+                              key={t.table_id ?? 'none'}
+                              title={`${t.quantity} sold in ${t.orders} order${t.orders === 1 ? '' : 's'}`}
+                              className="px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 text-xs font-medium"
+                            >
+                              {t.table_name === 'No table' ? 'No table' : `T${t.table_name}`} · {t.quantity}
+                            </span>
+                          ))}
+                          {(it.tables || []).length > 5 && (
+                            <span className="text-xs text-gray-400 self-center">+{(it.tables || []).length - 5} more</span>
+                          )}
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -259,6 +282,7 @@ const TopItemsReport: React.FC = () => {
                     <td className="text-xs text-gray-400">Top {items.length} items</td>
                     <td className="text-right text-xs text-gray-500">{totalSold}</td>
                     <td className="text-right text-xs font-semibold text-gray-700">{formatCurrency(totalRevenue)}</td>
+                    <td />
                   </tr>
                 </tfoot>
               </table>

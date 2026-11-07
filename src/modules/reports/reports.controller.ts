@@ -28,6 +28,7 @@ export class ReportsController {
         query.limit,
         query.from && query.to ? { from: query.from, to: query.to } : undefined,
         query.sort,
+        query.by_table,
       );
       res.status(200).json(successResponse(items));
     } catch (error) {

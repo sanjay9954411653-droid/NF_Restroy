@@ -13,15 +13,16 @@ export class ReportsService {
     limit: number,
     range?: { from: string; to: string },
     sort: 'quantity' | 'revenue' = 'quantity',
+    withTables = false,
   ): Promise<TopSellingItem[]> {
-    if (!range) return reportsRepository.getTopSellingItems(restaurantId, limit, undefined, sort);
+    if (!range) return reportsRepository.getTopSellingItems(restaurantId, limit, undefined, sort, withTables);
 
     // Dates are business-local days (BUSINESS_TZ); a client's tz/offset is ignored
     // so every report agrees on where "today" starts.
     const days = (Date.parse(range.to) - Date.parse(range.from)) / 86_400_000 + 1;
     if (days > 366) throw new BadRequestError('Date range can be at most one year');
 
-    return reportsRepository.getTopSellingItems(restaurantId, limit, { from: range.from, to: range.to }, sort);
+    return reportsRepository.getTopSellingItems(restaurantId, limit, { from: range.from, to: range.to }, sort, withTables);
   }
 
   async getDailyRevenue(restaurantId: string, days: number): Promise<DailyRevenuePoint[]> {

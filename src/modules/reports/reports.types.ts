@@ -9,6 +9,8 @@ export const TopItemsQuerySchema = z
     limit: z.preprocess((value) => Number(value), z.number().int().min(1).max(50).default(10)),
     // Rank by units sold (default) or by money made
     sort: z.enum(['quantity', 'revenue']).default('quantity'),
+    // Also return, for each item, which tables ordered it
+    by_table: z.preprocess((v) => v === '1' || v === 'true' || v === true, z.boolean().default(false)),
     from: isoDate.optional(),
     to: isoDate.optional(),
     tz: z.string().max(64).optional(),
@@ -66,6 +68,16 @@ export interface TopSellingItem {
   total_revenue: number;
   /** Total weight sold, in grams, for items sold by kg / 100 g (0 for normal items) */
   total_weight_grams: number;
+  /** Only when asked (by_table=1): which tables ordered this item, most first */
+  tables?: TopItemTable[];
+}
+
+export interface TopItemTable {
+  table_id: string | null;
+  /** Table number, or "No table" for parcel / online orders */
+  table_name: string;
+  quantity: number;
+  orders: number;
 }
 
 export interface PaymentModeRow {

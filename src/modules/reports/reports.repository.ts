@@ -4,6 +4,7 @@ import {
   DailyRevenuePoint,
   InventoryAlert,
   TopSellingItem,
+  TopItemTable,
   PaymentModeRow,
   OrderBreakdownRow,
   StaffOrderRow,
@@ -100,6 +101,7 @@ export class ReportsRepository {
     limit: number,
     range?: { from: string; to: string },
     sort: 'quantity' | 'revenue' = 'quantity',
+    withTables = false,
   ): Promise<TopSellingItem[]> {
     let dateFilter = '';
     const params: unknown[] = [restaurantId, limit];
@@ -136,7 +138,7 @@ export class ReportsRepository {
       params,
     );
 
-    return result.rows.map((row) => ({
+    const items: TopSellingItem[] = result.rows.map((row) => ({
       menu_item_id: row.menu_item_id,
       name: row.name,
       total_quantity: parseInt(row.total_quantity, 10) || 0,
@@ -144,6 +146,45 @@ export class ReportsRepository {
       total_revenue: parseFloat(row.total_revenue) || 0,
       total_weight_grams: parseInt(row.total_weight_grams, 10) || 0,
     }));
+
+    if (withTables && items.length > 0) {
+      // Same period / cancelled-order rules as above, split by the table the order was for
+      const tableParams: unknown[] = [restaurantId, items.map((i) => i.menu_item_id)];
+      if (range) tableParams.push(range.from, range.to);
+      const t = await query(
+        `SELECT
+           oi.menu_item_id,
+           o.table_id,
+           COALESCE(rt.table_number, 'No table') AS table_name,
+           SUM(oi.quantity) AS quantity,
+           COUNT(DISTINCT o.id) AS orders
+         FROM order_items oi
+         JOIN orders o ON oi.order_id = o.id
+         LEFT JOIN restaurant_tables rt ON rt.id = o.table_id
+         WHERE o.restaurant_id = $1
+           AND oi.menu_item_id = ANY($2::uuid[])
+           AND o.status <> 'CANCELLED'
+           AND oi.status <> 'CANCELLED'
+           ${dateFilter}
+         GROUP BY oi.menu_item_id, o.table_id, rt.table_number
+         ORDER BY quantity DESC, orders DESC`,
+        tableParams,
+      );
+      const byItem = new Map<string, TopItemTable[]>();
+      for (const r of t.rows) {
+        const list = byItem.get(r.menu_item_id) ?? [];
+        list.push({
+          table_id: r.table_id ?? null,
+          table_name: r.table_name,
+          quantity: parseInt(r.quantity, 10) || 0,
+          orders: parseInt(r.orders, 10) || 0,
+        });
+        byItem.set(r.menu_item_id, list);
+      }
+      for (const it of items) it.tables = byItem.get(it.menu_item_id) ?? [];
+    }
+
+    return items;
   }
 
   /**
