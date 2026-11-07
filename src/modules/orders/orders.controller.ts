@@ -16,7 +16,7 @@ import { AuthenticatedRequest } from '@/shared/middleware/authenticate';
 import { eventBroadcaster } from '@/shared/socket/eventBroadcaster';
 import { clearDelayAlert } from '@/shared/jobs/delayDetector';
 import { pushService } from '@/modules/push/push.service';
-import { assertTableAccess, assertOrderAccess, getAllowedTableIds } from '@/shared/tableAccess';
+import { assertTableAccess, assertOrderAccess, getWaiterAccess } from '@/shared/tableAccess';
 
 export class OrdersController {
   async create(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
@@ -66,7 +66,7 @@ pushService
       const sortBy = req.query.sort_by as string | undefined;
       const sortOrder = req.query.sort_order as string | undefined;
 
-      const allowedTables = await getAllowedTableIds(req.user);
+      const allowedTables = await getWaiterAccess(req.user);
       const { items, total } = await ordersService.getOrders(
         restaurantId, pagination.limit, pagination.offset, status, sortBy, sortOrder, allowedTables,
       );

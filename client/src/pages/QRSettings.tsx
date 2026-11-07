@@ -297,7 +297,7 @@ const QRSettings: React.FC = () => {
                 No table selection needed.
               </p>
               <div className="flex flex-wrap gap-2 mt-3">
-                {['Name + Phone', 'UPI / Card / Online', 'Pay at Counter', 'Takeaway'].map((tag) => (
+                {['Name + Phone', 'UPI / Card / Online', 'Pay at Counter', 'Pick-up'].map((tag) => (
                   <span key={tag} className="text-xs px-2 py-0.5 bg-white border border-gray-200 rounded-full text-gray-600">
                     {tag}
                   </span>

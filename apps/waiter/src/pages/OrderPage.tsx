@@ -106,7 +106,7 @@ const OrderPage: React.FC = () => {
             <p className="text-xs text-gray-500">
               {isAddMode
                 ? `Adding to order · Table ${tableLabel || ''}${guestLabel ? ` · Guest ${guestLabel}` : ''}`
-                : tableNumber ? `Table ${tableNumber}${guestLabel ? ` · Guest ${guestLabel}` : ''}` : orderType}
+                : tableNumber ? `Table ${tableNumber}${guestLabel ? ` · Guest ${guestLabel}` : ''}` : (orderType === 'PARCEL' ? 'Pick-up' : orderType)}
             </p>
           </div>
           <button onClick={() => navigate(-1)} className="text-sm text-gray-500 hover:text-gray-700">

@@ -5,7 +5,7 @@
  *   - Restaurant name + GSTIN
  *   - Order number, table, date/time
  *   - Itemized list
- *   - Subtotal + CGST + SGST (or IGST for parcel/online) + Grand Total
+ *   - Subtotal + CGST + SGST (or IGST for pick-up/online) + Grand Total
  *
  * Two actions:
  *   [Print Bill]       — opens browser print dialog (thermal-friendly layout)

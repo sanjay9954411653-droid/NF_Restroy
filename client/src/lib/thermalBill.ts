@@ -83,7 +83,7 @@ export function buildBillBytes(data: BillData, b: ReturnType<typeof computeBill>
 
   rows('Order #', String(order.order_number))
   if (tableNumber) rows('Table', String(tableNumber))
-  rows('Type', String(order.order_type))
+  rows('Type', order.order_type === 'PARCEL' ? 'Pick-up' : String(order.order_type))
   rule()
 
   // Items

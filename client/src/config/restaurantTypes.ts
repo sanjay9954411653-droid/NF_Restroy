@@ -75,7 +75,7 @@ export const RESTAURANT_TYPE_CONFIG: Record<RestaurantType, RestaurantTypeInfo> 
   },
   HYBRID: {
     label: 'Hybrid',
-    description: 'Mix of dine-in, delivery, and takeaway',
+    description: 'Mix of dine-in, delivery, and pick-up',
     icon: '🔄',
   },
 }
@@ -307,7 +307,7 @@ export const SETUP_WIZARD_STEPS: Record<RestaurantType, WizardStep[]> = {
   ],
   HYBRID: [
     { id: 'tables', label: 'Tables', description: 'Configure dine-in tables and sections' },
-    { id: 'token_settings', label: 'Token Settings', description: 'Configure token system for takeaway orders' },
+    { id: 'token_settings', label: 'Token Settings', description: 'Configure token system for pick-up orders' },
     { id: 'menu', label: 'Menu', description: 'Create menu for both dine-in and delivery' },
     { id: 'payments', label: 'Payments', description: 'Set up payment methods' },
     { id: 'qr', label: 'QR', description: 'Generate QR codes for dining areas' },

@@ -199,7 +199,7 @@ export function buildBillBody(data: BillData): string {
     <div class="div"></div>
     ${row('Order #', `<b>${esc(order.order_number)}</b>`)}
     ${tableNumber ? row('Table', `<b>${esc(tableNumber)}</b>`) : ''}
-    ${row('Type', `<b>${esc(order.order_type)}</b>`)}
+    ${row('Type', `<b>${esc(order.order_type === 'PARCEL' ? 'Pick-up' : order.order_type)}</b>`)}
     <div class="div"></div>
     <div class="row th"><span>Item</span><span>Amount</span></div>
     ${itemHtml}

@@ -404,14 +404,14 @@ export class OrdersRepository {
   async countByRestaurantId(
     restaurantId: string,
     statusFilter?: string,
-    tableIds?: string[] | null,
+    access?: { tableIds: string[]; pickup: boolean } | null,
   ): Promise<number> {
     const conditions = ['restaurant_id = $1'];
     const params: any[] = [restaurantId];
 
-    if (tableIds) {
-      params.push(tableIds);
-      conditions.push(`table_id = ANY($${params.length}::uuid[])`);
+    if (access) {
+      params.push(access.tableIds);
+      conditions.push(`(table_id = ANY($${params.length}::uuid[])${access.pickup ? " OR (table_id IS NULL AND order_type = 'PARCEL')" : ''})`);
     }
 
     if (statusFilter) {
@@ -433,7 +433,7 @@ export class OrdersRepository {
     statusFilter?: string,
     sortBy: string = 'created_at',
     sortOrder: string = 'DESC',
-    tableIds?: string[] | null,
+    access?: { tableIds: string[]; pickup: boolean } | null,
   ): Promise<EnrichedOrder[]> {
     const allowedSorts: Record<string, string> = {
       created_at: 'o.created_at',
@@ -447,9 +447,9 @@ export class OrdersRepository {
     const conditions = ['o.restaurant_id = $1'];
     const params: any[] = [restaurantId];
 
-    if (tableIds) {
-      params.push(tableIds);
-      conditions.push(`o.table_id = ANY($${params.length}::uuid[])`);
+    if (access) {
+      params.push(access.tableIds);
+      conditions.push(`(o.table_id = ANY($${params.length}::uuid[])${access.pickup ? " OR (o.table_id IS NULL AND o.order_type = 'PARCEL')" : ''})`);
     }
 
     if (statusFilter) {

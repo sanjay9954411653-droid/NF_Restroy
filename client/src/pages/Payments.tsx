@@ -261,7 +261,7 @@ const Payments: React.FC = () => {
                           <p className="text-xs text-slate-400 mt-0.5">Table {payment.table_number}</p>
                         )}
                         {payment.order_type && !payment.table_number && (
-                          <p className="text-xs text-slate-400 mt-0.5">{payment.order_type.replace('_', ' ')}</p>
+                          <p className="text-xs text-slate-400 mt-0.5">{payment.order_type === 'PARCEL' ? 'Pick-up' : payment.order_type.replace('_', ' ')}</p>
                         )}
                       </td>
                       <td className="font-semibold text-gray-900">

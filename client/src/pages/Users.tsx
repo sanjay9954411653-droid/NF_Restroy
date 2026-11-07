@@ -51,6 +51,7 @@ const Users: React.FC = () => {
   const [savingPwd, setSavingPwd] = useState(false)
   const [allTables, setAllTables] = useState<{ id: string; table_number: string }[]>([])
   const [assignedIds, setAssignedIds] = useState<string[]>([])
+  const [pickupAssigned, setPickupAssigned] = useState(false)
   const [search, setSearch] = useState('')
   const [roleFilter, setRoleFilter] = useState<UserRole | 'ALL'>('ALL')
 
@@ -81,6 +82,7 @@ const Users: React.FC = () => {
   const openCreate = () => {
     setEditing(null)
     setAssignedIds([])
+    setPickupAssigned(false)
     loadTablesForForm()
     setForm(defaultForm)
     setFormOpen(true)
@@ -93,6 +95,7 @@ const Users: React.FC = () => {
       if (userId) {
         const a = await api.get(`/users/${userId}/tables`)
         setAssignedIds(a.data.data.table_ids || [])
+        setPickupAssigned(Boolean(a.data.data.pickup))
       }
     } catch (err) {
       toast.error(getErrorMessage(err))
@@ -104,6 +107,7 @@ const Users: React.FC = () => {
 
   const openEdit = (user: User) => {
     setAssignedIds([])
+    setPickupAssigned(false)
     loadTablesForForm(user.id)
     setEditing(user)
     setForm({
@@ -130,12 +134,12 @@ const Users: React.FC = () => {
           role: form.role,
           is_active: form.is_active,
         })
-        if (form.role === 'WAITER') await api.put(`/users/${editing.id}/tables`, { table_ids: assignedIds })
+        if (form.role === 'WAITER') await api.put(`/users/${editing.id}/tables`, { table_ids: assignedIds, pickup: pickupAssigned })
         setUsers((p) => p.map((u) => (u.id === editing.id ? res.data.data : u)))
         toast.success('User updated')
       } else {
         const res = await api.post('/users', form)
-        if (form.role === 'WAITER' && assignedIds.length > 0) await api.put(`/users/${res.data.data.id}/tables`, { table_ids: assignedIds })
+        if (form.role === 'WAITER' && (assignedIds.length > 0 || pickupAssigned)) await api.put(`/users/${res.data.data.id}/tables`, { table_ids: assignedIds, pickup: pickupAssigned })
         setUsers((p) => [res.data.data, ...p])
         toast.success('User created')
       }
@@ -362,12 +366,19 @@ const Users: React.FC = () => {
             <div>
               <label className="form-label">Assigned tables</label>
               <p className="text-xs text-gray-500 mb-2">
-                This waiter can only see and order for the ticked tables. Leave all unticked to allow every table.
+                This waiter can only see and order for the ticked tables. Leave everything unselected to allow every table and pick-up.
               </p>
               {allTables.length === 0 ? (
                 <p className="text-xs text-gray-400">No tables found.</p>
               ) : (
                 <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto">
+                  <button
+                    type="button"
+                    onClick={() => setPickupAssigned((v) => !v)}
+                    className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${pickupAssigned ? 'bg-orange-500 text-white border-orange-500' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}
+                  >
+                    📦 Pick-up
+                  </button>
                   {allTables.map((t) => {
                     const on = assignedIds.includes(t.id)
                     return (

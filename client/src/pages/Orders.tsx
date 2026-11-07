@@ -226,7 +226,7 @@ const Orders: React.FC = () => {
         >
           <option value="ALL">All Types</option>
           <option value="DINE_IN">Dine In</option>
-          <option value="PARCEL">Parcel</option>
+          <option value="PARCEL">Pick-up</option>
           <option value="ONLINE">Online</option>
         </select>
       </div>
@@ -278,7 +278,7 @@ const Orders: React.FC = () => {
                       {order.table?.table_number ? (
                         <span className="font-medium text-gray-700">Table {order.table.table_number}{(order as any).guest_label ? ` · ${(order as any).guest_label}` : ''}</span>
                       ) : (
-                        <span className="uppercase text-xs text-gray-400">{order.order_type}</span>
+                        <span className="uppercase text-xs text-gray-400">{order.order_type === 'PARCEL' ? 'Pick-up' : order.order_type}</span>
                       )}
                     </span>
                     <span className="text-gray-400 text-xs">{formatRelative(order.created_at)}</span>

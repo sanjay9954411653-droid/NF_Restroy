@@ -79,7 +79,7 @@ export function buildKOTBytes(order: KOTOrder | Order, items: OrderItem[], resta
   out.push(...center(ascii(order.order_number)))
   out.push(...big(false), ...bold(false))
 
-  const tableLabel = order.table?.table_number ? `TABLE ${order.table.table_number}` : ascii(order.order_type || '')
+  const tableLabel = order.table?.table_number ? `TABLE ${order.table.table_number}` : ascii(order.order_type === 'PARCEL' ? 'PICK-UP' : (order.order_type || ''))
   out.push(...center(`${tableLabel}  -  ${ascii(order.order_source || '')}`))
   if (order.created_at) out.push(...center(new Date(order.created_at).toLocaleString('en-IN')))
   if (round && round > 1) {

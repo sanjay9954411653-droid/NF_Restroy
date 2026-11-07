@@ -3,7 +3,7 @@ import { usersService } from './users.service';
 import { CreateUserSchema, UpdateUserSchema, ChangePasswordSchema } from './users.types';
 import { successResponse } from '@/shared/utils/responseHandler';
 import { AuthenticatedRequest } from '@/shared/middleware/authenticate';
-import { getAssignedTableIds, setAssignedTableIds } from '@/shared/tableAccess';
+import { getAssignedTableIds, getPickupAssigned, setAssignedAccess } from '@/shared/tableAccess';
 import { z } from 'zod';
 
 export class UsersController {
@@ -27,16 +27,16 @@ export class UsersController {
   async getTables(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
     try {
       await usersService.getUser(req.params.id, req.user!.restaurantId); // 404 if not in this restaurant
-      res.status(200).json(successResponse({ table_ids: await getAssignedTableIds(req.params.id) }));
+      res.status(200).json(successResponse({ table_ids: await getAssignedTableIds(req.params.id), pickup: await getPickupAssigned(req.params.id) }));
     } catch (error) { next(error); }
   }
 
   async setTables(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
     try {
-      const { table_ids } = z.object({ table_ids: z.array(z.string().uuid()) }).parse(req.body);
+      const { table_ids, pickup } = z.object({ table_ids: z.array(z.string().uuid()), pickup: z.boolean().optional() }).parse(req.body);
       await usersService.getUser(req.params.id, req.user!.restaurantId);
-      const saved = await setAssignedTableIds(req.params.id, req.user!.restaurantId, table_ids);
-      res.status(200).json(successResponse({ table_ids: saved }, { message: 'Tables assigned' }));
+      const saved = await setAssignedAccess(req.params.id, req.user!.restaurantId, table_ids, pickup ?? false);
+      res.status(200).json(successResponse({ table_ids: saved.tableIds, pickup: saved.pickup }, { message: 'Assignments saved' }));
     } catch (error) { next(error); }
   }
 

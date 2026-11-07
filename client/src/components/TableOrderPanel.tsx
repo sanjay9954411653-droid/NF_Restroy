@@ -159,7 +159,7 @@ const TableOrderPanel: React.FC<TableOrderPanelProps> = ({
                   </Badge>
                 </div>
                 <p className="text-xs text-gray-400 mt-1">
-                  {order.order_type} · {order.order_source} · {formatRelative(order.created_at)}
+                  {order.order_type === 'PARCEL' ? 'Pick-up' : order.order_type} · {order.order_source} · {formatRelative(order.created_at)}
                 </p>
               </div>
 

@@ -7,7 +7,7 @@ import {
   UpdateTableRequestSchema,
 } from './tables.types';
 import { successResponse } from '@/shared/utils/responseHandler';
-import { getAllowedTableIds, assertTableAccess } from '@/shared/tableAccess';
+import { getWaiterAccess, assertTableAccess } from '@/shared/tableAccess';
 import { AuthenticatedRequest } from '@/shared/middleware/authenticate';
 import { eventBroadcaster } from '@/shared/socket/eventBroadcaster';
 
@@ -53,7 +53,7 @@ export class TablesController {
       const limit = parseInt(req.query.limit as string) || 50;
       const offset = parseInt(req.query.offset as string) || 0;
 
-      const allowed = await getAllowedTableIds(req.user);
+      const allowed = (await getWaiterAccess(req.user))?.tableIds ?? null;
       let tables = await tablesService.getAllTables(restaurantId, limit, offset);
       let total = await tablesService.getTableCount(restaurantId);
       if (allowed) {
@@ -88,7 +88,8 @@ export class TablesController {
         throw new Error('User not associated with a restaurant');
       }
 
-      const allowed = await getAllowedTableIds(req.user);
+      const access = await getWaiterAccess(req.user);
+      const allowed = access ? access.tableIds : null;
       let tables = await tablesService.getTablesWithStatus(restaurantId);
       if (allowed) tables = tables.filter((t: any) => allowed.includes(t.id));
       res.status(200).json(successResponse(tables));

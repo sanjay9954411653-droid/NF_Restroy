@@ -223,11 +223,11 @@ export class OrdersService {
     statusFilter?: string,
     sortBy?: string,
     sortOrder?: string,
-    tableIds?: string[] | null,
+    access?: { tableIds: string[]; pickup: boolean } | null,
   ): Promise<{ items: any[]; total: number }> {
     const [items, total] = await Promise.all([
-      ordersRepository.findByRestaurantIdFiltered(restaurantId, limit, offset, statusFilter, sortBy, sortOrder, tableIds),
-      ordersRepository.countByRestaurantId(restaurantId, statusFilter, tableIds),
+      ordersRepository.findByRestaurantIdFiltered(restaurantId, limit, offset, statusFilter, sortBy, sortOrder, access),
+      ordersRepository.countByRestaurantId(restaurantId, statusFilter, access),
     ]);
     return { items, total };
   }

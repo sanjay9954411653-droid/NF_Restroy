@@ -323,7 +323,7 @@ const RestaurantsTab: React.FC = () => {
                   { value: 'QSR_CHAIN',     label: '🏪 QSR Chain',       desc: "McDonald's / KFC style" },
                   { value: 'CAFE',          label: '☕ Café',             desc: 'Counter + some seating' },
                   { value: 'CLOUD_KITCHEN', label: '📦 Cloud Kitchen',   desc: 'Delivery only' },
-                  { value: 'HYBRID',        label: '🔀 Hybrid',          desc: 'Dine-in + takeaway + delivery' },
+                  { value: 'HYBRID',        label: '🔀 Hybrid',          desc: 'Dine-in + pick-up + delivery' },
                 ] as { value: string; label: string; desc: string }[]).map((t) => (
                   <button
                     key={t.value}
@@ -497,7 +497,7 @@ const RESTAURANT_TYPES = [
   { value: 'QSR_CHAIN',     label: '🏪 QSR Chain',       desc: "McDonald's / KFC style" },
   { value: 'CAFE',          label: '☕ Café',             desc: 'Counter + some seating' },
   { value: 'CLOUD_KITCHEN', label: '📦 Cloud Kitchen',   desc: 'Delivery only' },
-  { value: 'HYBRID',        label: '🔀 Hybrid',          desc: 'Dine-in + takeaway + delivery' },
+  { value: 'HYBRID',        label: '🔀 Hybrid',          desc: 'Dine-in + pick-up + delivery' },
 ]
 
 const CreateTab: React.FC<{ onCreated: () => void }> = ({ onCreated }) => {

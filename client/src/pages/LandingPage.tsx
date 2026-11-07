@@ -103,7 +103,7 @@ const RESTAURANT_TYPES: RestaurantTypeItem[] = [
     icon: <BoltIcon className="w-5 h-5" />,
     label: 'QSR / Fast Food',
     desc: 'Speed-optimized workflows for high-volume counter service and quick table turnover.',
-    features: ['Token display', 'Parcel orders', 'Combo builder', 'Drive-thru support'],
+    features: ['Token display', 'Pick-up orders', 'Combo builder', 'Drive-thru support'],
   },
   {
     icon: <GlobeAltIcon className="w-5 h-5" />,

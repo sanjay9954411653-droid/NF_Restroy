@@ -122,7 +122,7 @@ export function printReceipt(
         ${order.table?.table_number ? `<tr><td>Table</td><td class="right">${esc(String(order.table.table_number))}</td></tr>` : ''}
         <tr>
           <td>Type</td>
-          <td class="right">${esc(order.order_type)}</td>
+          <td class="right">${esc(order.order_type === 'PARCEL' ? 'Pick-up' : order.order_type)}</td>
         </tr>
         <tr>
           <td>Date</td>

@@ -5,7 +5,7 @@
  *   - Restaurant name + GSTIN
  *   - Order number, table, date/time
  *   - Itemized list
- *   - Subtotal + CGST + SGST (or IGST for parcel/online) + Grand Total
+ *   - Subtotal + CGST + SGST (or IGST for pick-up/online) + Grand Total
  *
  * Two actions:
  *   [Print Bill]       — opens browser print dialog (thermal-friendly layout)
@@ -239,7 +239,7 @@ const BillScreen: React.FC<BillScreenProps> = ({ orderId, tableNumber, onClose, 
             )}
             <div className="flex justify-between">
               <span>Type</span>
-              <span className="font-medium text-gray-900">{order.order_type}</span>
+              <span className="font-medium text-gray-900">{order.order_type === 'PARCEL' ? 'Pick-up' : order.order_type}</span>
             </div>
           </div>
 

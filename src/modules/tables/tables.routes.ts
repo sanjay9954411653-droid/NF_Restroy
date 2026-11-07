@@ -6,6 +6,7 @@ import { authenticate, AuthenticatedRequest } from '@/shared/middleware/authenti
 import { authorize } from '@/shared/middleware/authorize';
 import { checkSubscription } from '@/shared/middleware/checkSubscription';
 import { successResponse } from '@/shared/utils/responseHandler';
+import { getWaiterAccess } from '@/shared/tableAccess';
 
 const router = Router();
 
@@ -56,6 +57,14 @@ router.put('/passcode-setting', authenticate, authorize('ADMIN'), checkSubscript
 });
 
 // Get specific table by ID
+// What the logged-in waiter may access (used by the waiter app to hide Pick-up when not assigned)
+router.get('/my-access', authenticate, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  try {
+    const access = await getWaiterAccess(req.user);
+    res.status(200).json(successResponse({ restricted: access !== null, pickup: access ? access.pickup : true }));
+  } catch (error) { next(error); }
+});
+
 router.get('/:id', authenticate, (req, res, next) => tablesController.getById(req, res, next));
 
 // Create new table (Admin only)

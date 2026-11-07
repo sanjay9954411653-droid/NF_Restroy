@@ -43,7 +43,7 @@ interface OrderFormProps {
 
 const ORDER_TYPES: { value: OrderType; label: string; icon: string }[] = [
   { value: 'DINE_IN', label: 'Dine In', icon: '🍽️' },
-  { value: 'PARCEL', label: 'Parcel', icon: '📦' },
+  { value: 'PARCEL', label: 'Pick-up', icon: '📦' },
   { value: 'ONLINE', label: 'Online', icon: '🌐' },
 ]
 

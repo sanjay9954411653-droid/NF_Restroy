@@ -31,6 +31,10 @@ export const tablesApi = {
   // Tables enriched with their active order (occupancy command-center view)
   withStatus: () =>
     api.get<{ success: boolean; data: TableWithStatus[] }>('/tables/with-status'),
+
+  // What this waiter may access (pick-up allowed or not)
+  myAccess: () =>
+    api.get<{ success: boolean; data: { restricted: boolean; pickup: boolean } }>('/tables/my-access'),
 }
 
 // ── Menu ─────────────────────────────────────────────────────────────────────

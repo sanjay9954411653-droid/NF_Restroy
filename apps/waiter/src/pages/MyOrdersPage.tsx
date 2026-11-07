@@ -500,7 +500,7 @@ const MyOrdersPage: React.FC = () => {
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="font-bold text-gray-900">
-                          {order.table?.table_number ? `Table ${order.table.table_number}` : order.order_type}
+                          {order.table?.table_number ? `Table ${order.table.table_number}` : (order.order_type === 'PARCEL' ? 'Pick-up' : order.order_type)}
                           {totalRounds > 1 && (
                             <span className="ml-2 text-xs font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-700">
                               Round {round}
@@ -549,7 +549,7 @@ const MyOrdersPage: React.FC = () => {
                       <div>
                         <p className="font-bold text-gray-900">{order.order_number}</p>
                         <p className="text-xs text-gray-500">
-                          {order.table?.table_number ? `Table ${order.table.table_number}` : order.order_type}
+                          {order.table?.table_number ? `Table ${order.table.table_number}` : (order.order_type === 'PARCEL' ? 'Pick-up' : order.order_type)}
                           {' · '}
                           {formatDistanceToNow(new Date(order.created_at), { addSuffix: true })}
                         </p>
@@ -600,7 +600,7 @@ const MyOrdersPage: React.FC = () => {
                       <div>
                         <p className="font-bold text-gray-900">{order.order_number}</p>
                         <p className="text-xs text-gray-500">
-                          {order.table?.table_number ? `Table ${order.table.table_number}` : order.order_type}
+                          {order.table?.table_number ? `Table ${order.table.table_number}` : (order.order_type === 'PARCEL' ? 'Pick-up' : order.order_type)}
                           {' · '}
                           {formatDistanceToNow(new Date(order.created_at), { addSuffix: true })}
                         </p>

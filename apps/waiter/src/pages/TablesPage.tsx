@@ -57,6 +57,11 @@ const TablesPage: React.FC = () => {
   }, [fetchTables])
 
   const [picker, setPicker] = useState<TableWithStatus | null>(null)
+  const [pickupAllowed, setPickupAllowed] = useState(true)
+
+  useEffect(() => {
+    tablesApi.myAccess().then((r) => setPickupAllowed(r.data.data.pickup)).catch(() => {})
+  }, [])
 
   const openOrdersOf = (t: TableWithStatus) => t.active_orders && t.active_orders.length > 0 ? t.active_orders : (t.active_order ? [t.active_order] : [])
   const nextGuestLabel = (t: TableWithStatus) => {
@@ -84,7 +89,7 @@ const TablesPage: React.FC = () => {
     navigate('/order/new')
   }
 
-  const handleParcelOrder = () => {
+  const handlePickupOrder = () => {
     clear()
     setTable(null, null)
     setOrderType('PARCEL')
@@ -104,19 +109,21 @@ const TablesPage: React.FC = () => {
         </p>
       </div>
 
-      {/* Parcel / Takeaway */}
+      {/* Pick-up */}
+      {pickupAllowed && (
       <button
-        onClick={handleParcelOrder}
+        onClick={handlePickupOrder}
         className="w-full card p-4 flex items-center gap-4 hover:border-indigo-300 transition-colors text-left"
       >
         <div className="w-12 h-12 rounded-xl bg-orange-100 flex items-center justify-center text-2xl shrink-0">
           📦
         </div>
         <div>
-          <p className="font-semibold text-gray-900">Parcel / Takeaway</p>
+          <p className="font-semibold text-gray-900">Pick-up</p>
           <p className="text-sm text-gray-500">No table — order to go</p>
         </div>
       </button>
+      )}
 
       {/* Legend */}
       <div className="flex items-center gap-4 text-xs text-gray-500">
