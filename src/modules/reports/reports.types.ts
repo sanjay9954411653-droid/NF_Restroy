@@ -39,6 +39,8 @@ export const PaymentModesQuerySchema = z
   })
   .refine((q) => q.from <= q.to, { message: '"from" must not be after "to"' });
 
+export const OrderBreakdownQuerySchema = PaymentModesQuerySchema;
+
 export type PaymentModesQuery = z.infer<typeof PaymentModesQuerySchema>;
 
 export type TopItemsQuery = z.infer<typeof TopItemsQuerySchema>;
@@ -96,4 +98,29 @@ export interface InventoryAlert {
   menu_item_name: string;
   current_stock: number;
   reorder_level: number;
+}
+
+export interface OrderBreakdownRow {
+  key: string;
+  orders: number;
+  amount: number;
+}
+
+export interface StaffOrderRow {
+  user_id: string | null;
+  name: string;
+  role: string | null;
+  orders: number;
+  amount: number;
+}
+
+export interface OrderBreakdownReport {
+  from: string;
+  to: string;
+  tz: string;
+  total_orders: number;
+  total_amount: number;
+  by_source: OrderBreakdownRow[];
+  by_type: OrderBreakdownRow[];
+  by_staff: StaffOrderRow[];
 }

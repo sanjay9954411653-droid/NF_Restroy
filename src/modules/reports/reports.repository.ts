@@ -5,6 +5,8 @@ import {
   InventoryAlert,
   TopSellingItem,
   PaymentModeRow,
+  OrderBreakdownRow,
+  StaffOrderRow,
 } from "./reports.types";
 import { isToday, todayLocal, localDay } from '@/shared/businessTime';
 
@@ -203,6 +205,69 @@ export class ReportsRepository {
       reorder_level: parseInt(row.reorder_level, 10) || 0,
     }));
   }
+  /**
+   * Orders (cancelled ones excluded) between two business-local dates, grouped by
+   * where they came from (order_source), by order type, and by the staff member who
+   * took them (created_by). Orders with no staff user (customer QR, WhatsApp, Zomato)
+   * are grouped under one "Customer / online" row.
+   */
+  async getOrderBreakdown(
+    restaurantId: string,
+    from: string,
+    to: string,
+  ): Promise<{ by_source: OrderBreakdownRow[]; by_type: OrderBreakdownRow[]; by_staff: StaffOrderRow[] }> {
+    const where = `o.restaurant_id = $1
+         AND o.status <> 'CANCELLED'
+         AND ${localDay('o.created_at')} BETWEEN $2::date AND $3::date`;
+    const params = [restaurantId, from, to];
+
+    const group = async (column: 'order_source' | 'order_type'): Promise<OrderBreakdownRow[]> => {
+      const r = await query(
+        `SELECT o.${column}::text AS key,
+                COUNT(*) AS orders,
+                COALESCE(SUM(o.total_amount), 0) AS amount
+         FROM orders o
+         WHERE ${where}
+         GROUP BY o.${column}
+         ORDER BY orders DESC, amount DESC`,
+        params,
+      );
+      return r.rows.map((row) => ({
+        key: row.key,
+        orders: parseInt(row.orders, 10) || 0,
+        amount: parseFloat(row.amount) || 0,
+      }));
+    };
+
+    const [by_source, by_type] = await Promise.all([group('order_source'), group('order_type')]);
+
+    const staff = await query(
+      `SELECT u.id AS user_id,
+              COALESCE(u.name, 'Customer / online') AS name,
+              u.role::text AS role,
+              COUNT(*) AS orders,
+              COALESCE(SUM(o.total_amount), 0) AS amount
+       FROM orders o
+       LEFT JOIN users u ON u.id = o.created_by
+       WHERE ${where}
+       GROUP BY u.id, u.name, u.role
+       ORDER BY orders DESC, amount DESC`,
+      params,
+    );
+
+    return {
+      by_source,
+      by_type,
+      by_staff: staff.rows.map((row) => ({
+        user_id: row.user_id ?? null,
+        name: row.name,
+        role: row.role ?? null,
+        orders: parseInt(row.orders, 10) || 0,
+        amount: parseFloat(row.amount) || 0,
+      })),
+    };
+  }
+
   /**
    * Money received per payment mode between two business-local dates (inclusive).
    * payments.created_at is stored as UTC without a zone, so it is converted to the

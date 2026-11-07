@@ -11,6 +11,7 @@ import Loading from '../components/Loading'
 import Badge from '../components/Badge'
 import PaymentModeReport from '../components/PaymentModeReport'
 import TopItemsReport from '../components/TopItemsReport'
+import OrderBreakdownReport from '../components/OrderBreakdownReport'
 import ExportButtons from '../components/ExportButtons'
 import {
   CurrencyDollarIcon,
@@ -133,6 +134,9 @@ const Reports: React.FC = () => {
 
       {/* Cash / UPI / Card / Online collections */}
       <PaymentModeReport />
+
+      {/* Orders by source (QR, waiter, WhatsApp…) and by staff member */}
+      <OrderBreakdownReport />
 
       {/* Revenue chart */}
       <Card>

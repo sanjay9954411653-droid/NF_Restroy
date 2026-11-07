@@ -1,5 +1,5 @@
 import { reportsRepository } from './reports.repository';
-import { DashboardReport, DailyRevenuePoint, InventoryAlert, TopSellingItem, PaymentModesReport } from './reports.types';
+import { DashboardReport, DailyRevenuePoint, InventoryAlert, TopSellingItem, PaymentModesReport, OrderBreakdownReport } from './reports.types';
 import { BadRequestError } from '@/shared/errors/AppError';
 import { BUSINESS_TZ } from '@/shared/businessTime';
 
@@ -44,6 +44,21 @@ export class ReportsService {
       total_paid_count: sum((m) => m.paid_count),
       total_refunded: sum((m) => m.refunded_amount),
       total_pending: sum((m) => m.pending_amount),
+    };
+  }
+
+  async getOrderBreakdown(restaurantId: string, from: string, to: string): Promise<OrderBreakdownReport> {
+    const days = (Date.parse(to) - Date.parse(from)) / 86_400_000 + 1;
+    if (days > 366) throw new BadRequestError('Date range can be at most one year');
+
+    const data = await reportsRepository.getOrderBreakdown(restaurantId, from, to);
+    return {
+      from,
+      to,
+      tz: BUSINESS_TZ,
+      total_orders: data.by_source.reduce((s, r) => s + r.orders, 0),
+      total_amount: data.by_source.reduce((s, r) => s + r.amount, 0),
+      ...data,
     };
   }
 
