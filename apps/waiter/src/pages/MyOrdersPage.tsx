@@ -1,8 +1,8 @@
 /**
  * MyOrdersPage — the waiter's view of today's active orders.
  *
- * The waiter no longer moves orders through kitchen stages (that's the
- * kitchen's job). Instead:
+ * The waiter normally leaves kitchen stages to the kitchen. Restaurants with no
+ * kitchen screen use [Mark ready] on an "In kitchen" order instead. Flow:
  *   1. "Ready to serve"   — the kitchen finished a round; tap [Serve Order].
  *   2. "Awaiting payment" — the whole order is ready; tap [Collect Payment].
  *   3. "In kitchen"       — read-only progress, plus [Add] to send more items.
@@ -423,9 +423,11 @@ const PaymentSheet: React.FC<PaymentSheetProps> = ({ order, onClose, onPaid }) =
 const MyOrdersPage: React.FC = () => {
   const payable = usePayable()
   const navigate = useNavigate()
-  const { orders, queue, isLoading, fetchOrders, serve } = useOrderStore()
+  const { orders, queue, isLoading, fetchOrders, serve, markRoundReady } = useOrderStore()
   const [payingOrder, setPayingOrder] = useState<Order | null>(null)
   const [servingKey, setServingKey] = useState<string | null>(null)
+  const [readyKey, setReadyKey] = useState<string | null>(null)       // round being saved
+  const [confirmKey, setConfirmKey] = useState<string | null>(null)   // round awaiting a second tap
 
   useEffect(() => { fetchOrders() }, [fetchOrders])
 
@@ -445,6 +447,26 @@ const MyOrdersPage: React.FC = () => {
       toast.error('Failed to mark as served')
     } finally {
       setServingKey(null)
+    }
+  }
+
+  // First tap asks "Tap again", second tap marks the round's unfinished items as ready.
+  const handleMarkReady = async (order: Order, round: number, itemIds: string[]) => {
+    const key = `${order.id}-${round}`
+    if (confirmKey !== key) {
+      setConfirmKey(key)
+      setTimeout(() => setConfirmKey((k) => (k === key ? null : k)), 4000)
+      return
+    }
+    setConfirmKey(null)
+    setReadyKey(key)
+    try {
+      await markRoundReady(order.id, itemIds)
+      toast.success('Marked ready ✓')
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error?.message || 'Could not mark ready')
+    } finally {
+      setReadyKey(null)
     }
   }
 
@@ -605,6 +627,14 @@ const MyOrdersPage: React.FC = () => {
               {kitchenOrders.map((order) => {
                 const items = orderItemsOf(order)
                 const doneCount = items.filter((i) => i.status === 'DONE').length
+                // Rounds that still have food to finish (only once the restaurant accepted the order)
+                const pendingRounds = ['ACCEPTED', 'PREPARING'].includes(order.status)
+                  ? Array.from(
+                      items
+                        .filter((i) => (i.status as string) !== 'DONE' && (i.status as string) !== 'CANCELLED')
+                        .reduce((m, i) => m.set(i.round || 1, [...(m.get(i.round || 1) || []), i]), new Map<number, typeof items>()),
+                    ).sort((a, b) => a[0] - b[0])
+                  : []
                 return (
                   <div key={order.id} className="card p-4 space-y-3">
                     <div className="flex items-center justify-between">
@@ -627,6 +657,28 @@ const MyOrdersPage: React.FC = () => {
                       </span>
                       <span className="font-bold text-gray-900">{formatCurrency(payable(Number(order.total_amount)))}</span>
                     </div>
+                    {pendingRounds.map(([round, roundItems]) => {
+                      const key = `${order.id}-${round}`
+                      const saving = readyKey === key
+                      const confirming = confirmKey === key
+                      return (
+                        <button
+                          key={key}
+                          onClick={() => handleMarkReady(order, round, roundItems.map((i) => i.id as string).filter(Boolean))}
+                          disabled={saving}
+                          className={`w-full flex items-center justify-center gap-2 py-3 rounded-xl font-semibold text-sm text-white disabled:opacity-60 ${
+                            confirming ? 'bg-amber-500' : 'bg-emerald-600 hover:bg-emerald-700'
+                          }`}
+                        >
+                          <CheckCircleIcon className="w-5 h-5" />
+                          {saving
+                            ? 'Saving…'
+                            : confirming
+                              ? 'Tap again to confirm'
+                              : pendingRounds.length > 1 ? `Mark Round ${round} ready` : 'Mark ready'}
+                        </button>
+                      )
+                    })}
                     <button
                       onClick={() => navigate(`/order/add/${order.id}?table=${order.table?.table_number || ''}`)}
                       className="btn-secondary w-full flex items-center justify-center gap-1.5 py-2.5 text-sm"

@@ -33,6 +33,7 @@ interface OrderState {
   drainQueue:   () => Promise<void>
   updateStatus: (id: string, status: string) => Promise<void>
   serve:        (id: string, round?: number) => Promise<void>
+  markRoundReady: (id: string, itemIds: string[]) => Promise<void>
 }
 
 export const useOrderStore = create<OrderState>()(
@@ -113,6 +114,16 @@ export const useOrderStore = create<OrderState>()(
       serve: async (id, round) => {
         await ordersApi.serve(id, round)
         await get().fetchOrders()
+      },
+
+      // Waiter marks a round's food as ready (no kitchen screen). The last item flips the round to
+      // "Ready to serve"; when every round is ready the order moves to "Awaiting payment".
+      markRoundReady: async (id, itemIds) => {
+        try {
+          for (const itemId of itemIds) await ordersApi.markItemDone(id, itemId)
+        } finally {
+          await get().fetchOrders()
+        }
       },
 
       updateStatus: async (id, status) => {

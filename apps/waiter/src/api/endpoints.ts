@@ -79,6 +79,10 @@ export const ordersApi = {
   updateStatus: (id: string, status: string) =>
     api.patch<{ success: boolean; data: Order }>(`/orders/${id}`, { status }),
 
+  // Mark one item cooked/ready (used by "Mark ready" when the restaurant has no kitchen screen)
+  markItemDone: (orderId: string, itemId: string) =>
+    api.patch(`/orders/${orderId}/items/${itemId}`, { status: 'DONE' }),
+
   // Waiter confirms food was served (optionally only one round)
   serve: (id: string, round?: number) =>
     api.post(`/orders/${id}/serve`, round ? { round } : {}),

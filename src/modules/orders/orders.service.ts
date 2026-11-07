@@ -424,12 +424,13 @@ export class OrdersService {
       }
     }
 
-    // If all items are now DONE and the order is still PREPARING,
-    // auto-advance to READY so the waiter gets notified
+    // If all items are now DONE and the order is still ACCEPTED/PREPARING,
+    // auto-advance to READY so the waiter gets notified. (ACCEPTED too: restaurants
+    // without a kitchen screen let the waiter mark food ready straight from ACCEPTED.)
     let orderAutoAdvanced = false;
     let updatedOrder: Order | undefined;
 
-    if (status === 'DONE' && order.status === 'PREPARING') {
+    if (status === 'DONE' && ['ACCEPTED', 'PREPARING'].includes(order.status)) {
       const allDone = await ordersRepository.allItemsDone(orderId);
       if (allDone) {
         updatedOrder = await ordersRepository.update(orderId, { status: 'READY' }) ?? undefined;
