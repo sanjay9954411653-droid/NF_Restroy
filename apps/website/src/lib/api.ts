@@ -145,7 +145,7 @@ export interface MenuCategory {
 }
 
 export interface Menu {
-  restaurant: { id: string; name: string; slug: string; qr_mode: string };
+  restaurant: { id: string; name: string; slug: string; qr_mode: string; ordering_enabled?: boolean };
   categories: MenuCategory[];
   items: MenuItem[];
 }

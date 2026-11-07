@@ -19,6 +19,7 @@ export default async function MenuPage() {
 
   const categories = (menu?.categories || []).filter((c) => c.is_active);
   const items = (menu?.items || []).filter((i) => i.is_active);
+  const ordering = menu?.restaurant?.ordering_enabled !== false;
   const uncategorized = items.filter((i) => !categories.some((c) => c.id === i.category_id));
 
   return (
@@ -27,6 +28,10 @@ export default async function MenuPage() {
         {config.restaurant.name} — Menu
       </h1>
 
+      {!ordering ? (
+        <p className="mb-6 rounded-lg bg-gray-100 px-4 py-3 text-sm">Online ordering is currently unavailable. You can browse the menu.</p>
+      ) : null}
+
       {items.length === 0 ? (
         <p className="opacity-60">The menu is being prepared. Please check back soon.</p>
       ) : null}
@@ -34,10 +39,10 @@ export default async function MenuPage() {
       {categories.map((cat) => {
         const catItems = items.filter((i) => i.category_id === cat.id);
         if (catItems.length === 0) return null;
-        return <MenuSection key={cat.id} title={cat.name} items={catItems} />;
+        return <MenuSection key={cat.id} title={cat.name} items={catItems} ordering={ordering} />;
       })}
 
-      {uncategorized.length > 0 ? <MenuSection title="More" items={uncategorized} /> : null}
+      {uncategorized.length > 0 ? <MenuSection title="More" items={uncategorized} ordering={ordering} /> : null}
     </main>
   );
 }
@@ -45,8 +50,10 @@ export default async function MenuPage() {
 function MenuSection({
   title,
   items,
+  ordering = true,
 }: {
   title: string;
+  ordering?: boolean;
   items: Array<{
     id: string;
     name: string;
@@ -83,7 +90,7 @@ function MenuSection({
               <span className="whitespace-nowrap font-semibold" style={{ color: 'var(--brand-accent)' }}>
                 ₹{Number(item.price).toFixed(0)}
               </span>
-              <AddToCart menuItemId={item.id} name={item.name} price={Number(item.price)} />
+              {ordering ? <AddToCart menuItemId={item.id} name={item.name} price={Number(item.price)} /> : null}
             </div>
           </li>
         ))}

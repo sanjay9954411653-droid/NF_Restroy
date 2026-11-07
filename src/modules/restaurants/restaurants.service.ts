@@ -130,6 +130,7 @@ export class RestaurantsService {
     if ((payload as any).tax_rate !== undefined) { (updates as any).tax_rate = (payload as any).tax_rate; }
     if ((payload as any).tax_inclusive !== undefined) { (updates as any).tax_inclusive = (payload as any).tax_inclusive; }
     if (payload.qsr_enabled !== undefined) { updates.qsr_enabled = payload.qsr_enabled; }
+    if ((payload as any).ordering_enabled !== undefined) { (updates as any).ordering_enabled = (payload as any).ordering_enabled; }
     if (payload.token_prefix !== undefined) { updates.token_prefix = payload.token_prefix; }
     if (payload.token_daily_reset !== undefined) { updates.token_daily_reset = payload.token_daily_reset; }
     if (payload.logo_url !== undefined) { updates.logo_url = payload.logo_url; }

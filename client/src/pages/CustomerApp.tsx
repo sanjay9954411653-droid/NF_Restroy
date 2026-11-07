@@ -172,6 +172,7 @@ const CustomerApp: React.FC = () => {
   })
   const [showTop, setShowTop] = useState(false)
   const [qrMode, setQrMode] = useState<QRMode>('restaurant')
+  const [orderingEnabled, setOrderingEnabled] = useState(true)
   const [categories, setCategories] = useState<MenuCategory[]>([])
   const [items, setItems] = useState<MenuItem[]>([])
   const [tables, setTables] = useState<Table[]>([])
@@ -268,6 +269,7 @@ const CustomerApp: React.FC = () => {
           accent_color: data.restaurant.accent_color || '',
         })
         setQrMode(data.restaurant.qr_mode || 'restaurant')
+        setOrderingEnabled(data.restaurant.ordering_enabled !== false)
         setBilling(normalizeBilling(data.restaurant.billing))
         setCategories(data.categories || [])
         setItems(data.items || [])
@@ -1043,6 +1045,7 @@ const CustomerApp: React.FC = () => {
   )
 
   const handleAdd = (item: MenuItem) => {
+    if (!orderingEnabled) return
     // Sold by kg / 100 g: ask the customer for the weight they want
     if (isWeighed(item.price_unit)) {
       setWeightItem(item)
@@ -1147,6 +1150,7 @@ const CustomerApp: React.FC = () => {
         <button
           onClick={() => handleAdd(item)}
           aria-label={`Add ${item.name}`}
+          style={orderingEnabled ? undefined : { display: 'none' }}
           className="shrink-0 w-11 h-11 rounded-full bg-[var(--accent)] hover:brightness-95 text-white flex items-center justify-center shadow-lg ring-4 ring-white/80 transition-transform active:scale-95"
         >
           <PlusIcon className="w-5 h-5" />
@@ -1206,6 +1210,7 @@ const CustomerApp: React.FC = () => {
               <button
                 onClick={() => setCartOpen(true)}
                 aria-label="Open your order"
+                style={orderingEnabled ? undefined : { display: 'none' }}
                 className="relative p-2 bg-white rounded-full shadow"
               >
                 <ShoppingCartIcon className="w-5 h-5 text-[color:var(--accent)]" />
@@ -1368,6 +1373,7 @@ const CustomerApp: React.FC = () => {
                     <button
                       onClick={() => handleAdd(item)}
                       aria-label={`Add ${item.name}`}
+          style={orderingEnabled ? undefined : { display: 'none' }}
                       className="absolute bottom-3 right-3 w-11 h-11 rounded-full bg-[var(--accent)] hover:brightness-95 text-white flex items-center justify-center shadow-lg ring-4 ring-white/80 transition-transform active:scale-95"
                     >
                       <PlusIcon className="w-5 h-5" />
@@ -1418,8 +1424,16 @@ const CustomerApp: React.FC = () => {
         </button>
       )}
 
+      {!orderingEnabled && (
+        <div className="fixed bottom-0 inset-x-0 p-4 z-10">
+          <div className="max-w-2xl mx-auto bg-gray-900 text-white text-sm text-center rounded-2xl px-4 py-3 shadow-xl">
+            Ordering is currently unavailable. You can browse the menu.
+          </div>
+        </div>
+      )}
+
       {/* Sticky bottom bar */}
-      {cartCount > 0 && !cartOpen && (
+      {orderingEnabled && cartCount > 0 && !cartOpen && (
         <div className="fixed bottom-0 inset-x-0 p-4 z-10">
           <div className="max-w-2xl mx-auto">
             <button

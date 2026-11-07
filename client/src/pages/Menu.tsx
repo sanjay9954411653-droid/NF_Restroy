@@ -28,6 +28,20 @@ import {
 } from '@heroicons/react/24/outline'
 
 /** Move the element at `idx` up/down/to-top, but only among elements of the same group. */
+const Switch: React.FC<{ on: boolean; disabled?: boolean; onClick: () => void; label: string }> = ({ on, disabled, onClick, label }) => (
+  <button
+    type="button"
+    role="switch"
+    aria-checked={on}
+    aria-label={label}
+    disabled={disabled}
+    onClick={onClick}
+    className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-50 ${on ? 'bg-emerald-500' : 'bg-gray-300'}`}
+  >
+    <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${on ? 'translate-x-5' : 'translate-x-0.5'}`} />
+  </button>
+)
+
 function moveWithin<T>(arr: T[], idx: number, dir: 'up' | 'down' | 'top', sameGroup: (x: T) => boolean): T[] {
   const idxs = arr.map((x, i) => (sameGroup(x) ? i : -1)).filter((i) => i >= 0)
   const pos = idxs.indexOf(idx)
@@ -223,6 +237,45 @@ const Menu: React.FC = () => {
     }
   }
 
+  const [orderingEnabled, setOrderingEnabled] = useState<boolean | null>(null)
+  const [orderingBusy, setOrderingBusy] = useState(false)
+
+  useEffect(() => {
+    api.get('/restaurants/me')
+      .then((res) => setOrderingEnabled(res.data.data.ordering_enabled !== false))
+      .catch(() => setOrderingEnabled(null))
+  }, [])
+
+  const handleToggleOrdering = async () => {
+    if (orderingEnabled === null || orderingBusy) return
+    const next = !orderingEnabled
+    if (!next && !window.confirm('Turn customer ordering OFF? Customers will still see the menu but cannot place orders.')) return
+    setOrderingBusy(true)
+    try {
+      await api.put('/restaurants/me', { ordering_enabled: next })
+      setOrderingEnabled(next)
+      toast.success(next ? 'Customer ordering is ON' : 'Customer ordering is OFF — menu is view-only')
+    } catch (err) {
+      toast.error(getErrorMessage(err))
+    } finally {
+      setOrderingBusy(false)
+    }
+  }
+
+  const handleToggleCat = async (cat: MenuCategory) => {
+    if (togglingId) return
+    setTogglingId(cat.id)
+    try {
+      const res = await api.put(`/menus/categories/${cat.id}`, { is_active: !cat.is_active })
+      setCategories((p) => p.map((c) => (c.id === cat.id ? res.data.data : c)))
+      toast.success(cat.is_active ? `${cat.name} turned off` : `${cat.name} turned on`)
+    } catch (err) {
+      toast.error(getErrorMessage(err))
+    } finally {
+      setTogglingId(null)
+    }
+  }
+
   const handleSaveCat = async (e: React.FormEvent) => {
     e.preventDefault()
     setCatSaving(true)
@@ -395,14 +448,32 @@ const Menu: React.FC = () => {
         </div>
       </Card>
 
+      {/* Customer ordering on/off */}
+      {orderingEnabled !== null && (
+        <Card padding="sm">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="font-semibold text-gray-900 text-sm">Customer ordering</p>
+              <p className="text-xs text-gray-500">
+                {orderingEnabled
+                  ? 'ON: customers can order from the QR menu and website.'
+                  : 'OFF: customers can only view the menu. Staff can still take orders.'}
+              </p>
+            </div>
+            <Switch on={orderingEnabled} disabled={orderingBusy} onClick={handleToggleOrdering} label="Customer ordering on/off" />
+          </div>
+        </Card>
+      )}
+
       {/* Categories quick view */}
       {categories.length > 0 && (
         <div className="flex gap-2 flex-wrap">
           {categories.map((cat) => (
             <div
               key={cat.id}
-              className="flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-200 rounded-full text-sm"
+              className={`flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-200 rounded-full text-sm ${cat.is_active ? '' : 'opacity-60'}`}
             >
+              <Switch on={cat.is_active} disabled={togglingId === cat.id} onClick={() => handleToggleCat(cat)} label={`${cat.name} on/off`} />
               <span className="font-medium text-gray-700">{cat.name}</span>
               <span className="text-gray-400 text-xs">
                 {items.filter((i) => i.category_id === cat.id).length}
@@ -442,7 +513,7 @@ const Menu: React.FC = () => {
             </h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               {catItems.map((item) => (
-                <Card key={item.id} padding="sm" className="group relative">
+                <Card key={item.id} padding="sm" className={`group relative ${item.is_active ? '' : 'opacity-60'}`}>
                   {item.image_url ? (
                     <div className="relative mb-3">
                       <img
@@ -488,10 +559,11 @@ const Menu: React.FC = () => {
                       <span className="text-xs text-emerald-600 font-medium">🌱 Veg</span>
                     )}
                     <span className="text-xs text-gray-400">⏱ {item.prep_time_minutes}m</span>
-                    <div className="ml-auto">
+                    <div className="ml-auto flex items-center gap-2">
                       <Badge variant={item.is_active ? 'success' : 'default'} className="text-xs">
-                        {item.is_active ? 'Available' : 'Unavailable'}
+                        {item.is_active ? 'On' : 'Off'}
                       </Badge>
+                      <Switch on={item.is_active} disabled={togglingId === item.id} onClick={() => handleToggleAvail(item)} label={`${item.name} on/off`} />
                     </div>
                   </div>
 

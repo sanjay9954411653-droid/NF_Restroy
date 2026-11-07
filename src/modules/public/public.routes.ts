@@ -38,7 +38,7 @@ async function getRestaurantBySlug(slug: string) {
             other_charges_percent::float8 AS other_charges_percent,
             extra_charges_amount::float8 AS extra_charges_amount,
             extra_charges_amount::float8 AS extra_charges_amount,
-            table_passcode_required
+            table_passcode_required, ordering_enabled
      FROM restaurants WHERE slug = $1 LIMIT 1`,
     [slug],
   );
@@ -57,7 +57,8 @@ router.get('/menu/:slug', async (req: Request, res: Response, next: NextFunction
       menuRepository.findMenuItemsByRestaurantId(restaurant.id),
     ]);
 
-    const activeItems = items.filter((i) => i.is_active);
+    const activeCategoryIds = new Set(categories.filter((c) => c.is_active).map((c) => c.id));
+    const activeItems = items.filter((i) => i.is_active && activeCategoryIds.has(i.category_id));
 
     // ── Attach modifier groups with options to each menu item ────────────
     const itemIds = activeItems.map((i) => i.id);
@@ -136,6 +137,7 @@ router.get('/menu/:slug', async (req: Request, res: Response, next: NextFunction
           name: restaurant.name,
           slug: restaurant.slug,
           qr_mode: restaurant.qr_mode || 'restaurant',
+          ordering_enabled: restaurant.ordering_enabled !== false,
           logo_url: restaurant.logo_url || null,
           hero_image_url: restaurant.hero_image_url || null,
           tagline: restaurant.tagline || null,
@@ -363,6 +365,10 @@ router.post('/order/:slug', publicOrderRateLimiter, async (req: Request, res: Re
   try {
     const restaurant = await getRestaurantBySlug(req.params.slug);
     if (!restaurant) throw new NotFoundError('Restaurant not found');
+
+    if (restaurant.ordering_enabled === false) {
+      throw new BadRequestError('Online ordering is currently turned off. You can still browse the menu.');
+    }
 
     const payload = GuestOrderSchema.parse(req.body);
     const restaurantId: string = restaurant.id;
