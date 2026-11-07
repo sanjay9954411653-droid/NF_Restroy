@@ -1,18 +1,3 @@
-  addItem: (item) => {
-    set((state) => {
-      // One line per dish: tapping + again raises its quantity and keeps any note on it
-      const existing = state.cart.find((c) => c.menu_item_id === item.menu_item_id)
-      if (existing) {
-        return {
-          cart: state.cart.map((c) =>
-            c.menu_item_id === item.menu_item_id ? { ...c, quantity: c.quantity + item.quantity } : c,
-          ),
-        }
-      }
-      return { cart: [...state.cart, item] }
-    })
-  },
-
 /**
  * Cart store — manages the current order being built.
  * Cleared after order is submitted.
@@ -56,15 +41,12 @@ export const useCartStore = create<CartState>()((set, get) => ({
 
   addItem: (item) => {
     set((state) => {
-      const existing = state.cart.find(
-        (c) => c.menu_item_id === item.menu_item_id && !c.special_instructions,
-      )
+      // One line per dish: tapping + again raises its quantity and keeps any note on it
+      const existing = state.cart.find((c) => c.menu_item_id === item.menu_item_id)
       if (existing) {
         return {
           cart: state.cart.map((c) =>
-            c.menu_item_id === item.menu_item_id && !c.special_instructions
-              ? { ...c, quantity: c.quantity + item.quantity }
-              : c,
+            c.menu_item_id === item.menu_item_id ? { ...c, quantity: c.quantity + item.quantity } : c,
           ),
         }
       }
