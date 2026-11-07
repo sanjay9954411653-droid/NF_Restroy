@@ -113,16 +113,81 @@ export function buildKOTBytes(order: KOTOrder | Order, items: OrderItem[], resta
 }
 
 // ── Connection state (kept in memory for this tab) ──────────────────────────
-export type PrinterKind = 'usb' | 'bluetooth'
+export type PrinterKind = 'usb' | 'bluetooth' | 'network'
 type PrinterHandle =
   | { kind: 'usb'; device: USBDevice; endpointOut: number }
+  | { kind: 'network'; host: string; port: number }
   | { kind: 'bluetooth'; char: BluetoothRemoteGATTCharacteristic; device: BluetoothDevice }
 
 let active: PrinterHandle | null = null
 const USB_KEY = 'kitchen_printer_usb' // { vendorId, productId }
 
-export function isPrinterSupported(): { usb: boolean; bluetooth: boolean } {
-  return { usb: !!navigator.usb, bluetooth: !!navigator.bluetooth }
+export function isPrinterSupported(): { usb: boolean; bluetooth: boolean; network: boolean } {
+  return { usb: !!navigator.usb, bluetooth: !!navigator.bluetooth, network: !!getTcpPlugin() }
+}
+
+// ── WiFi / LAN (Ethernet) printers — Android app only ───────────────────────
+// A browser cannot open a raw TCP connection, so this works only inside the
+// AuraOS Android app (Capacitor), which ships a native "TcpPrinter" plugin
+// that sends the ESC/POS bytes to <printer IP>:9100.
+interface TcpPrinterPlugin {
+  check(opts: { host: string; port: number; timeoutMs?: number }): Promise<void>
+  print(opts: { host: string; port: number; data: string; timeoutMs?: number }): Promise<void>
+}
+function getTcpPlugin(): TcpPrinterPlugin | null {
+  const cap = typeof window !== 'undefined' ? (window as any).Capacitor : null
+  if (!cap?.isNativePlatform?.() || !cap.isPluginAvailable?.('TcpPrinter') || !cap.nativePromise) return null
+  // Call the native plugin through Capacitor's injected bridge (works even when the app loads a remote URL).
+  return {
+    check: (opts) => cap.nativePromise('TcpPrinter', 'check', opts),
+    print: (opts) => cap.nativePromise('TcpPrinter', 'print', opts),
+  }
+}
+
+const NET_KEY = 'kitchen_printer_network' // { host, port }
+
+export function getSavedNetworkPrinter(): { host: string; port: number } | null {
+  try {
+    const raw = localStorage.getItem(NET_KEY)
+    if (!raw) return null
+    const { host, port } = JSON.parse(raw)
+    return host ? { host: String(host), port: Number(port) || 9100 } : null
+  } catch {
+    return null
+  }
+}
+
+function toBase64(data: Uint8Array): string {
+  let bin = ''
+  for (let i = 0; i < data.length; i += 0x8000) bin += String.fromCharCode(...data.subarray(i, i + 0x8000))
+  return btoa(bin)
+}
+
+/** Connect to a WiFi/LAN printer by IP (default port 9100) and remember it on this device. */
+export async function connectNetwork(host: string, port = 9100): Promise<void> {
+  const tcp = getTcpPlugin()
+  if (!tcp) throw new Error('WiFi/LAN printing works only in the AuraOS Android app.')
+  host = host.trim()
+  if (!/^[a-zA-Z0-9.\-]+$/.test(host)) throw new Error('Enter a valid printer IP, like 192.168.1.50')
+  if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('Enter a valid port (usually 9100)')
+  await tcp.check({ host, port, timeoutMs: 4000 }).catch(() => {
+    throw new Error(`Can't reach ${host}:${port}. Check the printer is on, on the same WiFi, and the IP is right.`)
+  })
+  active = { kind: 'network', host, port }
+  localStorage.setItem(NET_KEY, JSON.stringify({ host, port }))
+}
+
+/** Network printers have no pairing, so "reconnect" just reuses the saved IP (checked lazily when printing). */
+export async function silentReconnectNetwork(): Promise<boolean> {
+  const saved = getSavedNetworkPrinter()
+  if (!saved || !getTcpPlugin()) return false
+  active = { kind: 'network', host: saved.host, port: saved.port }
+  return true
+}
+
+export function forgetNetworkPrinter(): void {
+  try { localStorage.removeItem(NET_KEY) } catch { /* ignore */ }
+  if (active?.kind === 'network') active = null
 }
 
 export function getConnectedPrinter(): PrinterKind | null {
@@ -212,12 +277,26 @@ export async function silentReconnectBluetooth(): Promise<boolean> {
 }
 
 export function disconnectPrinter(): void {
+  if (active?.kind === 'network') forgetNetworkPrinter()
   active = null
 }
 
 /** Sends raw ESC/POS bytes to whichever printer is currently connected. */
 export async function printRaw(data: Uint8Array): Promise<void> {
   if (!active) throw new Error('No printer connected')
+  if (active.kind === 'network') {
+    const tcp = getTcpPlugin()
+    if (!tcp) throw new Error('WiFi/LAN printing works only in the AuraOS Android app.')
+    try {
+      await tcp.print({ host: active.host, port: active.port, data: toBase64(data), timeoutMs: 6000 })
+    } catch (err: any) {
+      // Keep the saved IP but drop the live handle so the next print retries cleanly
+      active = null
+      reconnectTried = null
+      throw new Error(`Printer ${getSavedNetworkPrinter()?.host ?? ''} not reachable. Is it on and on the same WiFi?`)
+    }
+    return
+  }
   if (active.kind === 'usb') {
     // USB printers generally want the ticket in one write; large tickets are chunked.
     const CHUNK = 4096
@@ -251,6 +330,7 @@ export async function printKOTRaw(order: KOTOrder | Order, items: OrderItem[], r
 /** Name of the connected printer, for display. */
 export function getConnectedPrinterName(): string | null {
   if (!active) return null
+  if (active.kind === 'network') return `WiFi/LAN printer ${active.host}:${active.port}`
   return active.kind === 'usb' ? active.device.productName || 'USB printer' : active.device.name || 'Bluetooth printer'
 }
 
@@ -276,6 +356,7 @@ export function ensurePrinterReconnected(): Promise<void> {
   if (active) return Promise.resolve()
   if (!reconnectTried) {
     reconnectTried = (async () => {
+      if (await silentReconnectNetwork()) return
       if (await silentReconnectUSB()) return
       await silentReconnectBluetooth()
     })().then(() => {

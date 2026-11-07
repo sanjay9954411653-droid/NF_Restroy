@@ -21,6 +21,9 @@ import {
   getConnectedPrinter,
   printKOTRaw,
   isPrinterSupported,
+  connectNetwork,
+  getSavedNetworkPrinter,
+  silentReconnectNetwork,
   type PrinterKind,
 } from '../lib/thermalPrinter'
 
@@ -187,9 +190,14 @@ const [pushBusy, setPushBusy] = useState(false)
     setShowPrinterMenu(false)
     try {
       if (kind === 'usb') await connectUSB()
-      else await connectBluetooth()
+      else if (kind === 'network') {
+        const saved = getSavedNetworkPrinter()
+        const ip = window.prompt('Printer IP address (e.g. 192.168.1.50)', saved?.host || '')
+        if (!ip) return
+        await connectNetwork(ip, saved?.port || 9100)
+      } else await connectBluetooth()
       setPrinter(kind)
-      toast.success(`${kind === 'usb' ? 'USB' : 'Bluetooth'} printer connected`)
+      toast.success(`${kind === 'usb' ? 'USB' : kind === 'network' ? 'WiFi/LAN' : 'Bluetooth'} printer connected`)
     } catch (err: any) {
       if (err?.name !== 'NotFoundError') toast.error(err?.message || 'Could not connect to printer')
     }
@@ -424,6 +432,14 @@ const [pushBusy, setPushBusy] = useState(false)
                     className="w-full text-left px-4 py-2.5 text-sm text-gray-200 hover:bg-gray-700"
                   >
                     Connect via USB
+                  </button>
+                )}
+                {isPrinterSupported().network && (
+                  <button
+                    onClick={() => handleConnect('network')}
+                    className="w-full text-left px-4 py-2.5 text-sm text-gray-200 hover:bg-gray-700"
+                  >
+                    Connect via WiFi / LAN
                   </button>
                 )}
                 {isPrinterSupported().bluetooth && (
@@ -712,6 +728,7 @@ const [pushBusy, setPushBusy] = useState(false)
   try {
     const ready =
       !!getConnectedPrinter() ||
+      (await silentReconnectNetwork()) ||
       (await silentReconnectUSB()) ||
       (await silentReconnectBluetooth())
 

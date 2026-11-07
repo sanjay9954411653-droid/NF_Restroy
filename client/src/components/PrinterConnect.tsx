@@ -90,7 +90,7 @@ const PrinterConnect: React.FC = () => {
     )
   }
 
-  if (!support.usb && !support.bluetooth) {
+  if (!support.usb && !support.bluetooth && !support.network) {
     return (
       <p className="text-xs text-gray-400">
         Direct printing needs Chrome. In this browser, Print Bill opens the print dialog.

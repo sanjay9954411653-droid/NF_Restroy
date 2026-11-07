@@ -16,6 +16,8 @@ import {
   connectUSB,
   connectBluetooth,
   connectGrantedUsb,
+  connectNetwork,
+  getSavedNetworkPrinter,
   listGrantedUsb,
   ensurePrinterReconnected,
   getConnectedPrinter,
@@ -57,6 +59,9 @@ export default function PrinterSettings() {
   const [connectedName, setConnectedName] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const support = isPrinterSupported()
+  const savedNet = getSavedNetworkPrinter()
+  const [netHost, setNetHost] = useState(savedNet?.host || '')
+  const [netPort, setNetPort] = useState(String(savedNet?.port || 9100))
 
   const refresh = useCallback(async () => {
     await ensurePrinterReconnected()
@@ -121,9 +126,41 @@ export default function PrinterSettings() {
           )}
         </div>
 
-        {!support.usb && !support.bluetooth && (
+        {support.network && (
+          <div className="mt-5 rounded-lg border border-slate-200 p-3">
+            <p className="text-sm font-semibold text-slate-700 mb-2">WiFi / LAN printer</p>
+            <div className="flex gap-2">
+              <input
+                value={netHost}
+                onChange={(e) => setNetHost(e.target.value)}
+                placeholder="Printer IP, e.g. 192.168.1.50"
+                inputMode="decimal"
+                className="flex-1 min-w-0 rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              />
+              <input
+                value={netPort}
+                onChange={(e) => setNetPort(e.target.value.replace(/\D/g, ''))}
+                placeholder="9100"
+                inputMode="numeric"
+                className="w-20 rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              />
+            </div>
+            <Button
+              className="mt-2"
+              isLoading={busy}
+              onClick={() => run(() => connectNetwork(netHost, Number(netPort) || 9100), 'WiFi/LAN printer connected')}
+            >
+              Connect
+            </Button>
+            <p className="mt-2 text-xs text-slate-500">
+              The printer must be on the same WiFi/router as this device. Port is almost always 9100.
+            </p>
+          </div>
+        )}
+
+        {!support.usb && !support.bluetooth && !support.network && (
           <p className="mt-4 text-sm text-red-600">
-            This browser can't talk to printers. Open the site in Chrome (Android / Windows) or Edge.
+            This browser can't talk to printers. Open the site in Chrome (Android / Windows) or Edge, or use the AuraOS Android app for WiFi/LAN printers.
           </p>
         )}
 
