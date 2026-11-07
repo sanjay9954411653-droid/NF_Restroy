@@ -108,7 +108,7 @@ export class TablesRepository {
       LEFT JOIN LATERAL (
         SELECT
           o.id, o.order_number, o.status, o.total_amount, o.order_type, o.created_at,
-          (SELECT COALESCE(SUM(oi.quantity), 0) FROM order_items oi WHERE oi.order_id = o.id) AS item_count
+          (SELECT COALESCE(SUM(oi.quantity), 0) FROM order_items oi WHERE oi.order_id = o.id AND oi.status <> 'CANCELLED') AS item_count
         FROM orders o
         WHERE o.table_id = t.id
           AND o.restaurant_id = t.restaurant_id
