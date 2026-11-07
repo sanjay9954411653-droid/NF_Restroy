@@ -237,6 +237,23 @@ const Menu: React.FC = () => {
     }
   }
 
+  // Ready-made items: flip "out of batch" when today's batch is finished, so
+  // orders go to the kitchen (to be cooked) instead of straight to the waiter.
+  const handleToggleReadyStock = async (item: MenuItem) => {
+    if (togglingId) return
+    setTogglingId(item.id)
+    try {
+      const inStock = item.ready_in_stock !== false
+      const res = await api.put(`/menus/items/${item.id}/ready-stock`, { ready_in_stock: !inStock })
+      setItems((p) => p.map((i) => (i.id === item.id ? res.data.data : i)))
+      toast.success(inStock ? 'Out of batch — orders go to the kitchen' : 'Ready-made again — orders go straight to the waiter')
+    } catch (err) {
+      toast.error(getErrorMessage(err))
+    } finally {
+      setTogglingId(null)
+    }
+  }
+
   const [orderingEnabled, setOrderingEnabled] = useState<boolean | null>(null)
   const [orderingBusy, setOrderingBusy] = useState(false)
 
@@ -559,6 +576,21 @@ const Menu: React.FC = () => {
                       <span className="text-xs text-emerald-600 font-medium">🌱 Veg</span>
                     )}
                     <span className="text-xs text-gray-400">⏱ {item.prep_time_minutes}m</span>
+                    {item.skip_kitchen && (
+                      <button
+                        type="button"
+                        disabled={togglingId === item.id}
+                        onClick={() => handleToggleReadyStock(item)}
+                        title="Tap when today's batch is finished (or restocked)"
+                        className={`text-xs font-medium px-2 py-0.5 rounded-full border ${
+                          item.ready_in_stock === false
+                            ? 'bg-amber-50 text-amber-700 border-amber-200'
+                            : 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                        }`}
+                      >
+                        {item.ready_in_stock === false ? '🍳 Out of batch → kitchen' : '⚡ Ready-made'}
+                      </button>
+                    )}
                     <div className="ml-auto flex items-center gap-2">
                       <Badge variant={item.is_active ? 'success' : 'default'} className="text-xs">
                         {item.is_active ? 'On' : 'Off'}

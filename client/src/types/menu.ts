@@ -24,6 +24,10 @@ export interface MenuItem {
   is_vegetarian: boolean
   image_url?: string | null
   is_featured?: boolean
+  /** Ready-made item (samosa, drinks...): skips the kitchen, goes straight to the waiter */
+  skip_kitchen?: boolean
+  /** FALSE = today's batch is finished, so the item goes to the kitchen again */
+  ready_in_stock?: boolean
   is_active: boolean
   display_order: number
   created_at: string

@@ -10,6 +10,7 @@ import {
   CreateMenuItemRequestSchema,
   UpdateMenuItemRequestSchema,
   ReorderMenuRequestSchema,
+  SetReadyStockSchema,
 } from './menu.types';
 import { successResponse } from '@/shared/utils/responseHandler';
 import { AuthenticatedRequest } from '@/shared/middleware/authenticate';
@@ -202,6 +203,28 @@ export class MenuController {
       const item = await menuService.updateMenuItem(id, restaurantId, payload);
       res.status(200).json(
         successResponse(item, { message: 'Menu item updated successfully' })
+      );
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Floor staff flip a ready-made item "out of batch" (FALSE) / back in (TRUE).
+   * Only touches ready_in_stock — nothing else on the item can change here.
+   */
+  async setReadyStock(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const restaurantId = req.user?.restaurantId;
+      if (!restaurantId) {
+        throw new Error('User not associated with a restaurant');
+      }
+
+      const { id } = req.params;
+      const { ready_in_stock } = SetReadyStockSchema.parse(req.body);
+      const item = await menuService.updateMenuItem(id, restaurantId, { ready_in_stock });
+      res.status(200).json(
+        successResponse(item, { message: ready_in_stock ? 'Item is ready-made again' : 'Item marked out of batch — orders go to the kitchen' })
       );
     } catch (error) {
       next(error);

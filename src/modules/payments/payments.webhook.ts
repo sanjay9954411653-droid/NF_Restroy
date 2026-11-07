@@ -21,6 +21,7 @@ import { query } from '@/config/database';
 import { verifyWebhookSignature } from './gateways/razorpay.gateway';
 import { eventBroadcaster } from '@/shared/socket/eventBroadcaster';
 import { subscriptionsService } from '@/modules/subscriptions/subscriptions.service';
+import { NEXT_STATUS_AFTER_CONFIRM_SQL, notifyPendingReadyMadeRounds } from '@/shared/readyMadeNotify';
 
 const router = Router();
 
@@ -138,7 +139,7 @@ async function handlePaymentCaptured(entity: any): Promise<void> {
   // Advance order to ACCEPTED (was CREATED, now kitchen can see it)
   const orderResult = await query(
     `UPDATE orders
-     SET status = 'ACCEPTED', updated_at = NOW()
+     SET status = ${NEXT_STATUS_AFTER_CONFIRM_SQL}, updated_at = NOW()
      WHERE id = $1 AND status = 'CREATED'
      RETURNING id, restaurant_id, table_id, total_amount, status`,
     [payment.order_id],
@@ -168,6 +169,9 @@ async function handlePaymentCaptured(entity: any): Promise<void> {
     total_amount:  Number(order.total_amount),
     table_id:      order.table_id,
   });
+
+  // Ready-made items were held back until payment cleared — alert the waiters now.
+  await notifyPendingReadyMadeRounds(order.restaurant_id, order.id);
 }
 
 /**

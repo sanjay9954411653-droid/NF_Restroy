@@ -48,6 +48,8 @@ export interface MenuItem {
   prep_time_minutes: number
   is_vegetarian: boolean
   is_active: boolean
+  skip_kitchen?: boolean     // ready-made: skips the kitchen
+  ready_in_stock?: boolean   // false = batch finished, goes to the kitchen
 }
 
 export type OrderStatus = 'CREATED' | 'ACCEPTED' | 'PREPARING' | 'READY' | 'COMPLETED' | 'CANCELLED'
@@ -64,6 +66,7 @@ export interface OrderItem {
   status?: 'PENDING' | 'PREPARING' | 'DONE'
   round?: number
   served_at?: string | null
+  skip_kitchen?: boolean
 }
 
 export interface Order {

@@ -78,6 +78,8 @@ export interface OrderItem {
    kot_printed_at?: Date | null;
   round: number;
   served_at?: Date | null;
+  /** Ready-made line: never shown to the kitchen, goes straight to the waiter. */
+  skip_kitchen?: boolean;
   created_at: Date;
   updated_at: Date;
 }

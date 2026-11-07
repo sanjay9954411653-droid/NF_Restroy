@@ -106,7 +106,7 @@ export class MenuService {
   }
 
   async createMenuItem(restaurantId: string, payload: CreateMenuItemRequest): Promise<MenuItem> {
-    const { category_id, name, description, price, prep_time_minutes, is_vegetarian, is_active, display_order, image_url, is_featured, price_unit } = payload;
+    const { category_id, name, description, price, prep_time_minutes, is_vegetarian, is_active, display_order, image_url, is_featured, price_unit, skip_kitchen, ready_in_stock } = payload;
     const validatedName = this.validateMenuItemName(name);
 
     const category = await this.getCategory(category_id);
@@ -130,7 +130,9 @@ export class MenuService {
       display_order,
       image_url || null,
       is_featured ?? false,
-      price_unit ?? 'PIECE'
+      price_unit ?? 'PIECE',
+      skip_kitchen ?? false,
+      ready_in_stock ?? true
     );
   }
 
@@ -190,6 +192,12 @@ export class MenuService {
     }
     if (payload.is_featured !== undefined) {
       updates.is_featured = payload.is_featured;
+    }
+    if (payload.skip_kitchen !== undefined) {
+      updates.skip_kitchen = payload.skip_kitchen;
+    }
+    if (payload.ready_in_stock !== undefined) {
+      updates.ready_in_stock = payload.ready_in_stock;
     }
     if (payload.price_unit !== undefined) {
       updates.price_unit = payload.price_unit;

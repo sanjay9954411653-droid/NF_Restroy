@@ -35,6 +35,8 @@ export const CreateMenuItemRequestSchema = z.object({
   price_unit: z.enum(['PIECE', 'KG', '100G']).default('PIECE'), // KG / 100G: price is per kg / per 100 g
   image_url: imageUrlSchema,
   is_featured: z.boolean().default(false),
+  skip_kitchen: z.boolean().default(false), // ready-made item: goes straight to the waiter, not the kitchen
+  ready_in_stock: z.boolean().default(true), // FALSE = batch finished, item goes to the kitchen again
 });
 
 export const UpdateMenuItemRequestSchema = z.object({
@@ -49,6 +51,12 @@ export const UpdateMenuItemRequestSchema = z.object({
   price_unit: z.enum(['PIECE', 'KG', '100G']).optional(),
   image_url: imageUrlSchema,
   is_featured: z.boolean().optional(),
+  skip_kitchen: z.boolean().optional(),
+  ready_in_stock: z.boolean().optional(),
+});
+
+export const SetReadyStockSchema = z.object({
+  ready_in_stock: z.boolean(),
 });
 
 export const ReorderMenuRequestSchema = z.object({
@@ -86,6 +94,8 @@ export interface MenuItem {
   price_unit: 'PIECE' | 'KG' | '100G'; // KG / 100G: `price` is per kg / per 100 g
   image_url?: string | null;
   is_featured: boolean;
+  skip_kitchen: boolean;
+  ready_in_stock: boolean;
   is_active: boolean;
   display_order: number;
   created_at: Date;

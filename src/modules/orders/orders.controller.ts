@@ -16,6 +16,7 @@ import { AuthenticatedRequest } from '@/shared/middleware/authenticate';
 import { eventBroadcaster } from '@/shared/socket/eventBroadcaster';
 import { clearDelayAlert } from '@/shared/jobs/delayDetector';
 import { pushService } from '@/modules/push/push.service';
+import { notifyReadyMadeRound } from '@/shared/readyMadeNotify';
 import { assertTableAccess, assertOrderAccess, getWaiterAccess } from '@/shared/tableAccess';
 
 export class OrdersController {
@@ -37,17 +38,23 @@ export class OrdersController {
         total_amount: Number(result.order.total_amount),
         table_id: result.order.table_id,
       });
-pushService
-  .sendToRestaurant(
-    restaurantId,
-    {
-      title: '🔔 New order',
-      body: `Order ${result.order.order_number} received in the kitchen`,
-      tag: `new-order-${result.order.id}`,
-      data: { url: '/kitchen', orderId: result.order.id },
-    },
-  )
-  .catch((err) => console.error('Kitchen push notify failed:', err?.message || err));
+// Only ping the kitchen if there is something for it to cook
+      if (result.items.some((i) => !i.skip_kitchen)) {
+        pushService
+          .sendToRestaurant(
+            restaurantId,
+            {
+              title: '🔔 New order',
+              body: `Order ${result.order.order_number} received in the kitchen`,
+              tag: `new-order-${result.order.id}`,
+              data: { url: '/kitchen', orderId: result.order.id },
+            },
+          )
+          .catch((err) => console.error('Kitchen push notify failed:', err?.message || err));
+      }
+
+      // Ready-made items: tell the waiters right away (no kitchen step)
+      await notifyReadyMadeRound(restaurantId, result.order.id, result.readyRound);
       res.status(201).json(successResponse(result, { message: 'Order created successfully' }));
     } catch (error) {
       next(error);
@@ -135,6 +142,9 @@ pushService
         total_amount: Number(result.order.total_amount),
         table_id: result.order.table_id,
       });
+
+      // Ready-made items: tell the waiters right away (no kitchen step)
+      await notifyReadyMadeRound(restaurantId, id, result.readyRound);
 
       res.status(200).json(successResponse(result, { message: 'Items added to order' }));
     } catch (error) {

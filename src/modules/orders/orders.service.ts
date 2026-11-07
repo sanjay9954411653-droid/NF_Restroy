@@ -39,7 +39,7 @@ export class OrdersService {
     return (typeScore[orderType] ?? 0) + (sourceScore[orderSource] ?? 0);
   }
 
-  async createOrder(restaurantId: string, createdBy: string | null, payload: CreateOrderRequest): Promise<{ order: Order; items: OrderItem[] }> {
+  async createOrder(restaurantId: string, createdBy: string | null, payload: CreateOrderRequest): Promise<{ order: Order; items: OrderItem[]; readyRound: number | null }> {
     const { table_id, order_type, order_source, special_instructions, items, guest_label } = payload;
 
     if (order_type === 'DINE_IN' && !table_id) {
@@ -65,7 +65,12 @@ export class OrdersService {
     const orderNumber = await generateOrderNumber(restaurantId);
 
     const staffSources = ['WAITER', 'RECEPTION'];
-    const initialStatus = staffSources.includes(order_source) ? 'ACCEPTED' : 'CREATED';
+    let initialStatus = staffSources.includes(order_source) ? 'ACCEPTED' : 'CREATED';
+    // Nothing for the kitchen to cook (everything is ready-made): skip the
+    // kitchen stages entirely — the waiter just serves it.
+    if (orderItems.every((i) => i.skip_kitchen)) {
+      initialStatus = 'READY';
+    }
 
     // Generate token number if QSR mode is enabled for this restaurant
     let tokenNumber: string | null = null;
@@ -76,7 +81,7 @@ export class OrdersService {
       tokenNumber = `${restaurant.token_prefix}-${seq}`;
     }
 
-    return ordersRepository.createOrderWithItems(
+    const created = await ordersRepository.createOrderWithItems(
       restaurantId,
       table_id ?? null,
       orderNumber,
@@ -91,6 +96,28 @@ export class OrdersService {
       tokenNumber,
       guest_label ? guest_label.toUpperCase() : null,
     );
+
+    await this.deductReadyMadeStock(restaurantId, orderItems);
+    return created;
+  }
+
+  /**
+   * Ready-made items never pass through the kitchen's "DONE" tap (which is
+   * where stock is normally deducted), so deduct their stock when ordered.
+   * Non-fatal if inventory tracking isn't set up for the item.
+   */
+  private async deductReadyMadeStock(
+    restaurantId: string,
+    orderItems: Array<{ menu_item_id: string; quantity: number; skip_kitchen?: boolean }>,
+  ): Promise<void> {
+    for (const it of orderItems) {
+      if (!it.skip_kitchen) continue;
+      try {
+        await inventoryRepository.decrementStockForMenuItem(restaurantId, it.menu_item_id, it.quantity);
+      } catch (err) {
+        console.error('[Inventory] Failed to decrement stock for ready-made item', it.menu_item_id, err);
+      }
+    }
   }
 
   private async buildOrderItem(restaurantId: string, item: OrderItemRequest) {
@@ -113,13 +140,19 @@ export class OrdersService {
       throw new BadRequestError(priced.error);
     }
 
+    // Ready-made item that's currently in stock: no cooking needed, so it skips
+    // the kitchen and is stored as DONE (waiter serves it straight away).
+    // If the batch is finished (ready_in_stock = false) it goes to the kitchen.
+    const skipKitchen = !!(menuItem.skip_kitchen && menuItem.ready_in_stock);
+
     return {
       menu_item_id: item.menu_item_id,
       quantity: item.quantity,
       unit_price: priced.unit_price,
       special_instructions: item.special_instructions ?? null,
       weight_grams: priced.weight_grams,
-      status: 'PENDING',
+      status: skipKitchen ? 'DONE' : 'PENDING',
+      skip_kitchen: skipKitchen,
     };
   }
 
@@ -148,7 +181,7 @@ export class OrdersService {
    * Append items to an existing order (running tab).
    * The order must be open (not COMPLETED / CANCELLED).
    */
-  async addItemsToOrder(orderId: string, restaurantId: string, items: OrderItemRequest[]): Promise<{ order: Order; items: OrderItem[] }> {
+  async addItemsToOrder(orderId: string, restaurantId: string, items: OrderItemRequest[]): Promise<{ order: Order; items: OrderItem[]; readyRound: number | null }> {
     const order = await ordersRepository.findById(orderId);
     if (!order || order.restaurant_id !== restaurantId) {
       throw new NotFoundError('Order not found');
@@ -165,7 +198,9 @@ export class OrdersService {
     const grouped = this.groupOrderItems(items);
     const orderItems = await Promise.all(grouped.map((item) => this.buildOrderItem(restaurantId, item)));
 
-    return ordersRepository.addItemsToOrder(orderId, restaurantId, orderItems);
+    const result = await ordersRepository.addItemsToOrder(orderId, restaurantId, orderItems);
+    await this.deductReadyMadeStock(restaurantId, orderItems);
+    return result;
   }
   
   /**

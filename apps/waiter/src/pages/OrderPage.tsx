@@ -27,7 +27,7 @@ const OrderPage: React.FC = () => {
 
   const isAddMode = !!orderId
 
-  const { categories, items, fetchAll } = useMenuStore()
+  const { categories, items, fetchAll, setReadyStock } = useMenuStore()
   const { cart, tableNumber, orderType, notes, addItem, changeQty, setNotes, clear, total, count } = useCartStore()
   const { submitOrder } = useOrderStore()
 
@@ -44,6 +44,17 @@ const OrderPage: React.FC = () => {
       return matchCat && matchSearch
     })
   }, [items, activeCat, search])
+
+  // Ready-made item: batch finished -> orders for it go to the kitchen; restocked -> straight to the waiter
+  const handleToggleBatch = async (item: MenuItem) => {
+    const inStock = item.ready_in_stock !== false
+    try {
+      await setReadyStock(item.id, !inStock)
+      toast.success(inStock ? `${item.name}: out of batch — goes to kitchen` : `${item.name}: ready-made again`)
+    } catch (err) {
+      toast.error(getErrorMessage(err))
+    }
+  }
 
   const handleAdd = (item: MenuItem) => {
     addItem({ menu_item_id: item.id, name: item.name, price: item.price, quantity: 1 })
@@ -159,7 +170,22 @@ const OrderPage: React.FC = () => {
                   )}
                   <p className="font-medium text-gray-900 text-sm truncate">{item.name}</p>
                 </div>
-                <p className="text-indigo-600 font-bold text-sm mt-0.5">{formatCurrency(item.price)}</p>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <p className="text-indigo-600 font-bold text-sm">{formatCurrency(item.price)}</p>
+                  {item.skip_kitchen && (
+                    <button
+                      type="button"
+                      onClick={() => handleToggleBatch(item)}
+                      className={`text-[11px] font-medium px-2 py-0.5 rounded-full border ${
+                        item.ready_in_stock === false
+                          ? 'bg-amber-50 text-amber-700 border-amber-200'
+                          : 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                      }`}
+                    >
+                      {item.ready_in_stock === false ? '🍳 Out of batch' : '⚡ Ready-made'}
+                    </button>
+                  )}
+                </div>
               </div>
 
               {inCart ? (

@@ -27,6 +27,8 @@ router.get('/items', authenticate, (req, res, next) => menuController.getMenuIte
 router.get('/items/:id', authenticate, (req, res, next) => menuController.getMenuItem(req, res, next));
 router.post('/items', authenticate, authorize('ADMIN'), checkSubscription, (req, res, next) => menuController.createMenuItem(req, res, next));
 router.put('/items/:id', authenticate, authorize('ADMIN'), checkSubscription, (req, res, next) => menuController.updateMenuItem(req, res, next));
+// Waiter / reception / kitchen can flip a ready-made item in or out of batch (nothing else)
+router.put('/items/:id/ready-stock', authenticate, authorize('ADMIN', 'WAITER', 'RECEPTION', 'KITCHEN'), (req, res, next) => menuController.setReadyStock(req, res, next));
 router.delete('/items/:id', authenticate, authorize('ADMIN'), checkSubscription, (req, res, next) => menuController.deleteMenuItem(req, res, next));
 
 export default router;

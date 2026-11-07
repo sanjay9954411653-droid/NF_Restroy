@@ -17,6 +17,7 @@ interface MenuState {
   isLoading: boolean
   error: string | null
   fetchAll: () => Promise<void>
+  setReadyStock: (id: string, inStock: boolean) => Promise<void>
 }
 
 const CACHE_TTL_MS = 5 * 60 * 1000 // 5 minutes
@@ -30,6 +31,12 @@ export const useMenuStore = create<MenuState>()(
       lastFetched: null,
       isLoading:   false,
       error:       null,
+
+      // Ready-made item: mark the batch finished / restocked
+      setReadyStock: async (id, inStock) => {
+        const res = await menuApi.setReadyStock(id, inStock)
+        set((s) => ({ items: s.items.map((i) => (i.id === id ? { ...i, ...res.data.data } : i)) }))
+      },
 
       fetchAll: async () => {
         const { lastFetched } = get()

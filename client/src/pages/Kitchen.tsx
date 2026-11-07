@@ -67,6 +67,22 @@ const CARD_COLORS: Record<string, string> = {
   ACCEPTED:  'border-blue-400 bg-blue-950',
 }
 
+/**
+ * Ready-made lines (samosa, drinks...) never go to the kitchen: hide them, and
+ * drop orders that have nothing left to cook. Orders without ready-made lines
+ * are returned untouched.
+ */
+function withoutReadyMade<T extends { items?: any[]; order_items?: any[] }>(order: T): T | null {
+  const strip = (arr?: any[]) => (arr ? arr.filter((it) => !it.skip_kitchen) : arr)
+  const all = (order.order_items || order.items || []) as any[]
+  if (!all.some((it) => it.skip_kitchen)) return order
+  const items = strip(order.items)
+  const order_items = strip(order.order_items)
+  const remaining = (order_items || items || []).filter((it: any) => it.status !== 'CANCELLED')
+  if (remaining.length === 0) return null
+  return { ...order, items, order_items }
+}
+
 const AUTO_PRINT_KEY = 'kitchen_auto_print'
 
 const Kitchen: React.FC = () => {
@@ -121,7 +137,10 @@ const [pushBusy, setPushBusy] = useState(false)
       const all: OrderWithItems[] = res.data.data?.items || []
       // Kitchen only shows pre-service stages. READY orders leave the kitchen display
       // immediately — waiter handles payment from the Orders / Tables screen.
-      const active = all.filter((o) => ['CREATED', 'ACCEPTED', 'PREPARING'].includes(o.status))
+      const active = all
+        .filter((o) => ['CREATED', 'ACCEPTED', 'PREPARING'].includes(o.status))
+        .map((o) => withoutReadyMade(o))
+        .filter((o): o is OrderWithItems => o !== null)
       setOrders(active)
 
       // Auto-print only items that haven't been sent to the kitchen yet.

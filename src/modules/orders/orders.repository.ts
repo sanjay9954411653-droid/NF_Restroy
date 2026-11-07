@@ -21,11 +21,12 @@ export class OrdersRepository {
       special_instructions: string | null;
       status: string;
       weight_grams?: number | null;
+      skip_kitchen?: boolean; // ready-made: stored as DONE, own round, never printed on the KOT
     }>,
     initialStatus: string = 'CREATED',
     tokenNumber: string | null = null,
     guestLabel: string | null = null,
-  ): Promise<{ order: Order; items: OrderItem[] }> {
+  ): Promise<{ order: Order; items: OrderItem[]; readyRound: number | null }> {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
@@ -55,10 +56,19 @@ export class OrdersRepository {
       const placeholders: string[] = [];
       let paramIndex = 1;
 
-      // A brand-new order is always "round 1" — the first ticket that goes to the kitchen.
+      // Kitchen items are "round 1" — the first ticket that goes to the kitchen.
+      // Ready-made items get their OWN round (2 if the order also has kitchen
+      // items, else 1), so the waiter can serve them immediately without waiting
+      // for the kitchen round to finish. They are stored as DONE with the KOT
+      // marked as printed, so the kitchen screen and printer ignore them.
+      const hasKitchen = items.some((i) => !i.skip_kitchen);
+      const hasReady = items.some((i) => i.skip_kitchen);
+      const readyRound = hasKitchen ? 2 : 1;
+
       items.forEach((item) => {
+        const skip = !!item.skip_kitchen;
         placeholders.push(
-          `($${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, 1)`,
+          `($${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, ${skip ? 'CURRENT_TIMESTAMP' : 'NULL'})`,
         );
         itemValues.push(
           order.id,
@@ -69,18 +79,20 @@ export class OrdersRepository {
           item.special_instructions,
           item.status,
           item.weight_grams ?? null,
+          skip ? readyRound : 1,
+          skip,
         );
       });
 
       const itemsResult = await client.query(
-        `INSERT INTO order_items (order_id, restaurant_id, menu_item_id, quantity, unit_price, special_instructions, status, weight_grams, round)
+        `INSERT INTO order_items (order_id, restaurant_id, menu_item_id, quantity, unit_price, special_instructions, status, weight_grams, round, skip_kitchen, kot_printed_at)
          VALUES ${placeholders.join(", ")}
-         RETURNING id, order_id, restaurant_id, menu_item_id, quantity, unit_price, special_instructions, status, weight_grams, round, created_at, updated_at`,
+         RETURNING id, order_id, restaurant_id, menu_item_id, quantity, unit_price, special_instructions, status, weight_grams, round, skip_kitchen, created_at, updated_at`,
         itemValues,
       );
 
       await client.query("COMMIT");
-      return { order, items: itemsResult.rows };
+      return { order, items: itemsResult.rows, readyRound: hasReady ? readyRound : null };
     } catch (error) {
       await client.query("ROLLBACK");
       throw error;
@@ -127,6 +139,7 @@ export class OrdersRepository {
               'kot_printed_at', oi.kot_printed_at,
               'round', oi.round,
               'served_at', oi.served_at,
+              'skip_kitchen', oi.skip_kitchen,
               'created_at', oi.created_at AT TIME ZONE 'UTC',
               'modifiers', (
                 SELECT COALESCE(
@@ -208,8 +221,9 @@ export class OrdersRepository {
       special_instructions: string | null;
       status: string;
       weight_grams?: number | null;
+      skip_kitchen?: boolean;
     }>,
-  ): Promise<{ order: Order; items: OrderItem[] }> {
+  ): Promise<{ order: Order; items: OrderItem[]; readyRound: number | null }> {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
@@ -230,10 +244,17 @@ export class OrdersRepository {
       );
       const nextRound: number = roundResult.rows[0].next_round;
 
+      // Kitchen items take the next round; ready-made items get their own round
+      // after it, so the waiter can serve them right away (see createOrderWithItems).
+      const hasKitchen = items.some((i) => !i.skip_kitchen);
+      const hasReady = items.some((i) => i.skip_kitchen);
+      const readyRound = hasKitchen ? nextRound + 1 : nextRound;
+
       for (const item of items) {
+        const skip = !!item.skip_kitchen;
         await client.query(
-          `INSERT INTO order_items (order_id, restaurant_id, menu_item_id, quantity, unit_price, special_instructions, status, round, weight_grams)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+          `INSERT INTO order_items (order_id, restaurant_id, menu_item_id, quantity, unit_price, special_instructions, status, round, weight_grams, skip_kitchen, kot_printed_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, ${skip ? 'CURRENT_TIMESTAMP' : 'NULL'})`,
           [
             orderId,
             restaurantId,
@@ -242,19 +263,23 @@ export class OrdersRepository {
             item.unit_price,
             item.special_instructions,
             item.status,
-            nextRound,
+            skip ? readyRound : nextRound,
             item.weight_grams ?? null,
+            skip,
           ],
         );
       }
 
       // A new round means the kitchen has work again: if the order was already
       // READY (waiting for the waiter/payment), send it back to ACCEPTED so it
-      // reappears on the kitchen display.
-      await client.query(
-        `UPDATE orders SET status = 'ACCEPTED', updated_at = CURRENT_TIMESTAMP WHERE id = $1 AND status = 'READY'`,
-        [orderId],
-      );
+      // reappears on the kitchen display. Not needed when only ready-made items
+      // were added — the kitchen has no new work.
+      if (hasKitchen) {
+        await client.query(
+          `UPDATE orders SET status = 'ACCEPTED', updated_at = CURRENT_TIMESTAMP WHERE id = $1 AND status = 'READY'`,
+          [orderId],
+        );
+      }
 
       // Recompute total from all line items
       await client.query(
@@ -275,13 +300,13 @@ export class OrdersRepository {
       );
 
       const itemsResult = await client.query(
-        `SELECT id, order_id, restaurant_id, menu_item_id, quantity, unit_price, special_instructions, status, kot_printed_at, round, created_at, updated_at
+        `SELECT id, order_id, restaurant_id, menu_item_id, quantity, unit_price, special_instructions, status, kot_printed_at, round, served_at, skip_kitchen, created_at, updated_at
          FROM order_items WHERE order_id = $1 ORDER BY created_at ASC`,
         [orderId],
       );
 
       await client.query("COMMIT");
-      return { order: orderResult.rows[0], items: itemsResult.rows };
+      return { order: orderResult.rows[0], items: itemsResult.rows, readyRound: hasReady ? readyRound : null };
     } catch (error) {
       await client.query("ROLLBACK");
       throw error;
@@ -355,6 +380,7 @@ export class OrdersRepository {
             'kot_printed_at', oi.kot_printed_at,
             'round', oi.round,
               'served_at', oi.served_at,
+              'skip_kitchen', oi.skip_kitchen,
               'created_at', oi.created_at AT TIME ZONE 'UTC'
           )
         ) FILTER (WHERE oi.id IS NOT NULL),
@@ -474,6 +500,7 @@ export class OrdersRepository {
               'unit_price', oi.unit_price, 'special_instructions', oi.special_instructions,
               'status', oi.status, 'kot_printed_at', oi.kot_printed_at, 'round', oi.round,
               'served_at', oi.served_at,
+              'skip_kitchen', oi.skip_kitchen,
               'created_at', oi.created_at AT TIME ZONE 'UTC'
             )
           ) FILTER (WHERE oi.id IS NOT NULL), '[]'

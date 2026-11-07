@@ -31,6 +31,7 @@ const MenuForm: React.FC<MenuFormProps> = ({ menuItem, onClose, onSave }) => {
   const [displayOrder, setDisplayOrder] = useState(menuItem?.display_order || 0);
   const [imageUrl, setImageUrl] = useState(menuItem?.image_url || '');
   const [isFeatured, setIsFeatured] = useState(menuItem?.is_featured ?? false);
+  const [skipKitchen, setSkipKitchen] = useState(menuItem?.skip_kitchen ?? false);
   const [categories, setCategories] = useState<MenuCategory[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -56,7 +57,9 @@ const MenuForm: React.FC<MenuFormProps> = ({ menuItem, onClose, onSave }) => {
       setDisplayOrder(menuItem.display_order);
       setImageUrl(menuItem.image_url || '');
       setIsFeatured(menuItem.is_featured ?? false);
+      setSkipKitchen(menuItem.skip_kitchen ?? false);
     } else {
+      setSkipKitchen(false);
       setName('');
       setDescription('');
       setPrice(0);
@@ -164,6 +167,7 @@ const MenuForm: React.FC<MenuFormProps> = ({ menuItem, onClose, onSave }) => {
       display_order: Number(displayOrder),
       image_url: imageUrl.trim(), // '' removes the photo
       is_featured: isFeatured,
+      skip_kitchen: skipKitchen,
     };
 
     setSaving(true);
@@ -361,6 +365,18 @@ const MenuForm: React.FC<MenuFormProps> = ({ menuItem, onClose, onSave }) => {
               />
               <label htmlFor="isFeatured" className="block text-sm font-medium text-gray-700">
                 ⭐ Featured — show in the big "Featured" row at the top of the customer menu
+              </label>
+            </div>
+            <div className="flex items-center space-x-2 md:col-span-2">
+              <input
+                type="checkbox"
+                id="skipKitchen"
+                checked={skipKitchen}
+                onChange={(e) => setSkipKitchen(e.target.checked)}
+                className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+              />
+              <label htmlFor="skipKitchen" className="block text-sm font-medium text-gray-700">
+                ⚡ Ready-made — already prepared (e.g. samosa, cold drinks). Skips the kitchen and goes straight to the waiter to serve
               </label>
             </div>
           </div>

@@ -22,6 +22,7 @@ import { env } from '@/config/env';
 import { createRazorpayOrder } from '@/modules/payments/gateways/razorpay.gateway';
 import { getOrderPayableTotal } from '@/shared/billing';
 import { modifierRepository } from '@/modules/modifiers/modifier.repository'; import { pushService } from '@/modules/push/push.service';
+import { notifyReadyMadeRound, NEXT_STATUS_AFTER_CONFIRM_SQL, notifyPendingReadyMadeRounds } from '@/shared/readyMadeNotify';
 import { z } from 'zod';
 import { isToday } from '@/shared/businessTime';
 
@@ -391,6 +392,7 @@ router.post('/order/:slug', publicOrderRateLimiter, async (req: Request, res: Re
       unit_price: number;
       special_instructions: string | null;
       status: string;
+      skip_kitchen: boolean;
       modifiers: Array<{
         modifier_group_id: string;
         modifier_group_name: string;
@@ -456,12 +458,18 @@ router.post('/order/:slug', publicOrderRateLimiter, async (req: Request, res: Re
         }
       }
 
+      // Ready-made item that's in stock: no cooking, so it skips the kitchen and is
+      // stored as DONE (the waiter serves it straight away). If today's batch is
+      // finished (ready_in_stock = false) it goes to the kitchen like any other item.
+      const skipKitchen = !!(menuItem.skip_kitchen && menuItem.ready_in_stock);
+
       orderItems.push({
         menu_item_id: item.menu_item_id,
         quantity: item.quantity,
         unit_price: Number(menuItem.price) + modifierAdjustment,
         special_instructions: item.special_instructions ?? null,
-        status: 'PENDING',
+        status: skipKitchen ? 'DONE' : 'PENDING',
+        skip_kitchen: skipKitchen,
         modifiers: validatedModifiers,
       });
     }
@@ -578,7 +586,7 @@ router.post('/order/:slug', publicOrderRateLimiter, async (req: Request, res: Re
     if (payload.payment_method) noteParts.push(`Payment: ${payload.payment_method}`);
     if (payload.notes) noteParts.push(payload.notes);
 
-        const { order } = existingOrder
+        const { order, readyRound } = existingOrder
       ? await ordersRepository.addItemsToOrder(
           existingOrder.id,
           restaurantId,
@@ -588,6 +596,7 @@ router.post('/order/:slug', publicOrderRateLimiter, async (req: Request, res: Re
             unit_price: i.unit_price,
             special_instructions: i.special_instructions,
             status: i.status,
+            skip_kitchen: i.skip_kitchen,
           })),
         )
       : await ordersRepository.createOrderWithItems(
@@ -606,6 +615,7 @@ router.post('/order/:slug', publicOrderRateLimiter, async (req: Request, res: Re
             unit_price: i.unit_price,
             special_instructions: i.special_instructions,
             status: i.status,
+            skip_kitchen: i.skip_kitchen,
           })),
           'CREATED',
           tokenNumber,
@@ -614,7 +624,7 @@ router.post('/order/:slug', publicOrderRateLimiter, async (req: Request, res: Re
     // If the bill had already reached READY (kitchen finished, awaiting
     // payment) and the customer just added more items, reopen it so the
     // kitchen sees the new items instead of it sitting marked "ready".
-    if (existingOrder && existingOrder.status === 'READY') {
+    if (existingOrder && existingOrder.status === 'READY' && orderItems.some((i) => !i.skip_kitchen)) {
       await query(`UPDATE orders SET status = 'CREATED', updated_at = CURRENT_TIMESTAMP WHERE id = $1`, [order.id]);
       order.status = 'CREATED';
     }
@@ -749,6 +759,15 @@ router.post('/order/:slug', publicOrderRateLimiter, async (req: Request, res: Re
     const shouldBroadcastNow =
       !isOnlinePayment || !razorpayData;
 
+    // Nothing for the kitchen to cook (everything ready-made): skip the kitchen
+    // stages — the waiter just serves it. (When an online payment is pending the
+    // order stays CREATED until payment is confirmed; that path handles it.)
+    const readyOnly = orderItems.every((i) => i.skip_kitchen);
+    if (shouldBroadcastNow && readyOnly && !existingOrder && order.status === 'CREATED') {
+      await query(`UPDATE orders SET status = 'READY', updated_at = CURRENT_TIMESTAMP WHERE id = $1 AND status = 'CREATED'`, [order.id]);
+      order.status = 'READY';
+    }
+
     if (shouldBroadcastNow) {
       const broadcastPayload = {
         order_id: order.id,
@@ -766,20 +785,26 @@ router.post('/order/:slug', publicOrderRateLimiter, async (req: Request, res: Re
       // Real OS-level push to kitchen devices — this is what rings/lights up
       // the screen even if the Kitchen Display tab isn't open or the screen
       // is asleep. The socket broadcast above only updates an already-open tab.
-      pushService
-        .sendToRestaurant(
-          restaurantId,
-          {
-            title: existingOrder ? '🔔 Items added to an order' : '🔔 New order',
-            body: existingOrder
-              ? `More items added to order ${order.order_number}`
-              : `Order ${order.order_number} received in the kitchen`,
-            tag: `new-order-${order.id}`,
-            data: { url: '/kitchen', orderId: order.id },
-          },
-          ['KITCHEN'],
-        )
-        .catch((err) => console.error('Kitchen push notify failed:', err?.message || err));
+      // Only ping the kitchen if there is something for it to cook.
+      if (orderItems.some((i) => !i.skip_kitchen)) {
+        pushService
+          .sendToRestaurant(
+            restaurantId,
+            {
+              title: existingOrder ? '🔔 Items added to an order' : '🔔 New order',
+              body: existingOrder
+                ? `More items added to order ${order.order_number}`
+                : `Order ${order.order_number} received in the kitchen`,
+              tag: `new-order-${order.id}`,
+              data: { url: '/kitchen', orderId: order.id },
+            },
+            ['KITCHEN'],
+          )
+          .catch((err) => console.error('Kitchen push notify failed:', err?.message || err));
+      }
+
+      // Ready-made items: tell the waiters right away (no kitchen step).
+      await notifyReadyMadeRound(restaurantId, order.id, readyRound);
     }
 
     res.status(201).json(
@@ -844,7 +869,7 @@ router.post('/verify-payment', publicOrderRateLimiter, async (req: Request, res:
 
     const orderResult = await query(
       `UPDATE orders
-       SET status = 'ACCEPTED', updated_at = NOW()
+       SET status = ${NEXT_STATUS_AFTER_CONFIRM_SQL}, updated_at = NOW()
        WHERE id = $1 AND status = 'CREATED'
        RETURNING id, restaurant_id, table_id, total_amount, status`,
       [payload.order_id],
@@ -867,6 +892,8 @@ router.post('/verify-payment', publicOrderRateLimiter, async (req: Request, res:
         status:        'PAID',
         amount:        Number(payment.amount),
       });
+      // Ready-made items were held back until payment cleared — alert the waiters now.
+      await notifyPendingReadyMadeRounds(order.restaurant_id, order.id);
     }
 
     res.json(successResponse({ verified: true, message: 'Payment confirmed' }));

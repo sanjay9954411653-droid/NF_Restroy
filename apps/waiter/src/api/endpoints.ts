@@ -45,6 +45,10 @@ export const menuApi = {
 
   items: () =>
     api.get<{ success: boolean; data: MenuItem[] }>('/menus/items'),
+
+  // Flip a ready-made item out of batch (false) / back in (true)
+  setReadyStock: (id: string, ready_in_stock: boolean) =>
+    api.put<{ success: boolean; data: MenuItem }>(`/menus/items/${id}/ready-stock`, { ready_in_stock }),
 }
 
 // ── Orders ───────────────────────────────────────────────────────────────────
