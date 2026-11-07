@@ -336,7 +336,7 @@ export class OrdersService {
     orderId: string,
     itemId: string,
     restaurantId: string,
-    status: 'PENDING' | 'PREPARING' | 'DONE',
+    status: 'PENDING' | 'PREPARING' | 'DONE' | 'CANCELLED',
   ): Promise<{ item: UpdatedOrderItem; orderAutoAdvanced: boolean; order?: Order; roundReady?: { round: number; order_number: string; table_number: string | null } }> {
     // Verify order belongs to this restaurant
     const order = await ordersRepository.findById(orderId);
@@ -346,6 +346,11 @@ export class OrdersService {
 
     if (['COMPLETED', 'CANCELLED'].includes(order.status)) {
       throw new BadRequestError('Cannot update items on a completed or cancelled order');
+    }
+
+    if (status === 'CANCELLED') {
+      const cancelled = await ordersRepository.cancelOrderItem(orderId, itemId, restaurantId);
+      return { item: cancelled.item, orderAutoAdvanced: false, order: cancelled.order };
     }
 
     const item = await ordersRepository.updateItemStatus(itemId, orderId, status);

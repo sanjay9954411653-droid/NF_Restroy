@@ -19,7 +19,7 @@ router.post('/:id/kot-printed', authenticate, checkSubscription, authorize('KITC
 // Waiter marks food as served (whole order or one round)
 router.post('/:id/serve', authenticate, checkSubscription, authorize('WAITER', 'ADMIN', 'RECEPTION', 'KITCHEN'), (req, res, next) => ordersController.serve(req, res, next));
 // Update a single item's status (PENDING → PREPARING → DONE) — kitchen use
-router.patch('/:id/items/:itemId', authenticate, checkSubscription, authorize('KITCHEN', 'ADMIN'), (req, res, next) => ordersController.updateItemStatus(req, res, next));
+router.patch('/:id/items/:itemId', authenticate, checkSubscription, authorize('KITCHEN', 'ADMIN', 'WAITER', 'RECEPTION'), (req, res, next) => ordersController.updateItemStatus(req, res, next));
 // Accept both PUT and PATCH for status updates (frontend compatibility)
 router.put('/:id', authenticate, checkSubscription, authorize('KITCHEN', 'ADMIN', 'WAITER', 'RECEPTION'), (req, res, next) => ordersController.update(req, res, next));
 router.patch('/:id', authenticate, checkSubscription, authorize('KITCHEN', 'ADMIN', 'WAITER', 'RECEPTION'), (req, res, next) => ordersController.update(req, res, next));

@@ -1,6 +1,7 @@
 import { pool, query } from '@/config/database';
 import { Order, OrderItem, OrderStats, EnrichedOrder, UpdatedOrderItem } from './orders.types';
 import { isToday } from '@/shared/businessTime';
+import { BadRequestError, NotFoundError } from '@/shared/errors/AppError';
 
 export class OrdersRepository {
   async createOrderWithItems(
@@ -258,7 +259,7 @@ export class OrdersRepository {
         `UPDATE orders
          SET total_amount = (
            SELECT COALESCE(SUM(quantity * unit_price), 0)
-           FROM order_items WHERE order_id = $1
+           FROM order_items WHERE order_id = $1 AND status <> 'CANCELLED'
          ),
          updated_at = CURRENT_TIMESTAMP
          WHERE id = $1`,
@@ -546,6 +547,62 @@ export class OrdersRepository {
     return result.rows[0] || null;
   }
 
+  /** Cancel one line item while keeping the parent order open when other items remain. */
+  async cancelOrderItem(
+    orderId: string,
+    itemId: string,
+    restaurantId: string,
+  ): Promise<{ item: UpdatedOrderItem; order: Order; remainingItems: number }> {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const orderResult = await client.query(
+        `SELECT id, restaurant_id, status FROM orders WHERE id = $1 FOR UPDATE`,
+        [orderId],
+      );
+      const orderRow = orderResult.rows[0];
+      if (!orderRow || orderRow.restaurant_id !== restaurantId) {
+        throw new NotFoundError('Order not found');
+      }
+      if (['COMPLETED', 'CANCELLED'].includes(orderRow.status)) {
+        throw new BadRequestError('Cannot cancel an item on a closed order');
+      }
+
+      const itemResult = await client.query(
+        `UPDATE order_items SET status = 'CANCELLED', updated_at = CURRENT_TIMESTAMP
+         WHERE id = $1 AND order_id = $2 AND restaurant_id = $3 AND status <> 'CANCELLED'
+         RETURNING id, order_id, menu_item_id, quantity, unit_price, special_instructions, status, completed_at, round, created_at, updated_at`,
+        [itemId, orderId, restaurantId],
+      );
+      if (!itemResult.rows[0]) {
+        throw new NotFoundError('Order item not found or already cancelled');
+      }
+
+      const totals = await client.query(
+        `SELECT COUNT(*) FILTER (WHERE status <> 'CANCELLED')::int AS remaining_items,
+                COALESCE(SUM(quantity * unit_price) FILTER (WHERE status <> 'CANCELLED'), 0) AS total_amount
+         FROM order_items WHERE order_id = $1`,
+        [orderId],
+      );
+      const remainingItems = totals.rows[0].remaining_items;
+      const nextStatus = remainingItems === 0 ? 'CANCELLED' : orderRow.status;
+      const updatedOrderResult = await client.query(
+        `UPDATE orders SET total_amount = $2, status = $3, updated_at = CURRENT_TIMESTAMP,
+             completed_at = CASE WHEN $3 = 'CANCELLED' THEN CURRENT_TIMESTAMP ELSE completed_at END
+         WHERE id = $1
+         RETURNING id, restaurant_id, table_id, order_number, token_number, order_type, order_source, status, total_amount, priority_score, special_instructions, created_by, created_at, updated_at, completed_at`,
+        [orderId, totals.rows[0].total_amount, nextStatus],
+      );
+      await client.query('COMMIT');
+      return { item: itemResult.rows[0], order: updatedOrderResult.rows[0], remainingItems };
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
   /**
    * Info needed to tell the waiter a round is ready: order/table labels and
    * whether every item of that round is now DONE.
@@ -557,7 +614,7 @@ export class OrdersRepository {
     const result = await query(
       `SELECT o.order_number, rt.table_number,
               (SELECT COUNT(*) FILTER (WHERE oi.status != 'DONE') FROM order_items oi
-                WHERE oi.order_id = o.id AND oi.round = $2) AS pending_count
+                WHERE oi.order_id = o.id AND oi.round = $2 AND oi.status <> 'CANCELLED') AS pending_count
        FROM orders o
        LEFT JOIN restaurant_tables rt ON rt.id = o.table_id
        WHERE o.id = $1`,
@@ -589,6 +646,7 @@ export class OrdersRepository {
       params.push(round);
       extra += ` AND round = $${params.length}`;
     }
+    extra += ` AND status <> 'CANCELLED'`;
     if (!includeUnfinished) extra += ` AND status = 'DONE'`;
     const result = await query(
       `UPDATE order_items SET served_at = CURRENT_TIMESTAMP
@@ -604,8 +662,8 @@ export class OrdersRepository {
    */
   async allItemsDone(orderId: string): Promise<boolean> {
     const result = await query(
-      `SELECT COUNT(*) FILTER (WHERE status != 'DONE') AS pending_count
-       FROM order_items WHERE order_id = $1`,
+      `SELECT COUNT(*) FILTER (WHERE status NOT IN ('DONE', 'CANCELLED')) AS pending_count
+       FROM order_items WHERE order_id = $1 AND status <> 'CANCELLED'`,
       [orderId],
     );
     return parseInt(result.rows[0].pending_count, 10) === 0;

@@ -264,6 +264,14 @@ pushService
 
       const result = await ordersService.updateItemStatus(orderId, itemId, restaurantId, status);
 
+      // A cancelled line item changes the bill total; notify all connected screens.
+      if (status === 'CANCELLED' && result.order) {
+        const payload = { order_id: result.order.id, restaurant_id: restaurantId, status: result.order.status, total_amount: Number(result.order.total_amount), table_id: result.order.table_id, order_number: result.order.order_number };
+        if (result.order.status === 'CANCELLED') eventBroadcaster?.broadcastOrderCancelled(payload);
+        else eventBroadcaster?.broadcastOrderUpdated(payload);
+        if (result.order.status === 'CANCELLED') clearDelayAlert(result.order.id);
+      }
+
       // If all items are done, the order was auto-advanced to READY — broadcast it
       if (result.orderAutoAdvanced && result.order) {
         eventBroadcaster?.broadcastOrderUpdated({
@@ -299,7 +307,7 @@ pushService
         successResponse(
           { item: result.item, order_auto_advanced: result.orderAutoAdvanced },
           {
-            message: result.orderAutoAdvanced
+            message: status === 'CANCELLED' ? 'Item cancelled; remaining order updated' : result.orderAutoAdvanced
               ? 'All items done — order marked READY'
               : 'Item status updated',
           },

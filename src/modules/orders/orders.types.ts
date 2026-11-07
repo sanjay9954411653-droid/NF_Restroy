@@ -28,7 +28,7 @@ export const AddOrderItemsRequestSchema = z.object({
 });
 
 export const UpdateOrderItemStatusSchema = z.object({
-  status: z.enum(['PENDING', 'PREPARING', 'DONE']),
+  status: z.enum(['PENDING', 'PREPARING', 'DONE', 'CANCELLED']),
 });
 
 export const ServeOrderSchema = z.object({
@@ -70,7 +70,7 @@ export interface OrderItem {
   quantity: number;
   unit_price: number;
   special_instructions?: string;
-  status: 'PENDING' | 'PREPARING' | 'DONE';
+  status: 'PENDING' | 'PREPARING' | 'DONE' | 'CANCELLED';
    kot_printed_at?: Date | null;
   round: number;
   served_at?: Date | null;
@@ -106,7 +106,7 @@ export interface UpdatedOrderItem {
   quantity: number;
   unit_price: number;
   special_instructions?: string;
-  status: 'PENDING' | 'PREPARING' | 'DONE';
+  status: 'PENDING' | 'PREPARING' | 'DONE' | 'CANCELLED';
   completed_at: Date | null;
   round?: number;
   created_at: Date;
