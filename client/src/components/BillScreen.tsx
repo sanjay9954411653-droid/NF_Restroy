@@ -12,6 +12,7 @@
  *   [Collect Payment]  — opens the PaymentForm with grand total pre-filled
  */
 
+import { orderTypeLabel } from '../lib/orderTypeLabel'
 import React, { useEffect, useState, useRef } from 'react'
 import api, { getErrorMessage } from '../api'
 import toast from 'react-hot-toast'
@@ -239,7 +240,7 @@ const BillScreen: React.FC<BillScreenProps> = ({ orderId, tableNumber, onClose, 
             )}
             <div className="flex justify-between">
               <span>Type</span>
-              <span className="font-medium text-gray-900">{order.order_type === 'PARCEL' ? 'Pick-up' : order.order_type}</span>
+              <span className="font-medium text-gray-900">{orderTypeLabel(order.order_type)}</span>
             </div>
           </div>
 
