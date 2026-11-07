@@ -8,6 +8,7 @@ import { formatDate } from './utils'
 import { formatWeight, ratePerKg } from './weight'
 import { getPrinterPrefs, paperCols } from './printerSettings'
 import { bytes, ascii } from './thermalPrinter'
+import { orderTypeLabel } from './orderTypeLabel'
 
 const ESC = 0x1b
 const GS = 0x1d
@@ -52,7 +53,8 @@ function qr(data: string, size = 6): number[] {
   ]
 }
 
-export function buildBillBytes(data: BillData, b: ReturnType<typeof computeBill>): Uint8Array {
+/** `logo`: optional raster bytes from logoRasterBytes(), printed centred above the name. */
+export function buildBillBytes(data: BillData, b: ReturnType<typeof computeBill>, logo?: number[] | null): Uint8Array {
   const prefs = getPrinterPrefs()
   const W = paperCols(prefs)
   const { order, items, restaurant, tableNumber, coupon } = data
@@ -70,6 +72,7 @@ export function buildBillBytes(data: BillData, b: ReturnType<typeof computeBill>
 
   // Header
   align(1)
+  if (logo && getPrinterPrefs().printLogo) out.push(...logo)
   if (restaurant.show_name_in_bill) {
     bold(true); raw(GS, 0x21, 0x11); text(restaurant.name.toUpperCase()); raw(GS, 0x21, 0x00); bold(false)
   }
@@ -83,7 +86,7 @@ export function buildBillBytes(data: BillData, b: ReturnType<typeof computeBill>
 
   rows('Order #', String(order.order_number))
   if (tableNumber) rows('Table', String(tableNumber))
-  rows('Type', order.order_type === 'PARCEL' ? 'Pick-up' : String(order.order_type))
+  rows('Type', orderTypeLabel(order.order_type))
   rule()
 
   // Items

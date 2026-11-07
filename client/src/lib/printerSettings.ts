@@ -1,15 +1,16 @@
 /**
  * Printer preferences, saved on THIS device (localStorage): paper size,
- * auto-cutter and whether the UPI QR is printed on the bill.
+ * auto-cutter, and whether the UPI QR and the logo are printed on the bill.
  */
 export interface PrinterPrefs {
   paperInches: 2 | 3
   autoCutter: boolean
   printUpiQr: boolean
+  printLogo: boolean
 }
 
 const KEY = 'printer_prefs'
-const DEFAULTS: PrinterPrefs = { paperInches: 3, autoCutter: true, printUpiQr: true }
+const DEFAULTS: PrinterPrefs = { paperInches: 3, autoCutter: true, printUpiQr: true, printLogo: true }
 
 export function getPrinterPrefs(): PrinterPrefs {
   try {
@@ -20,6 +21,7 @@ export function getPrinterPrefs(): PrinterPrefs {
       paperInches: p.paperInches === 2 ? 2 : 3,
       autoCutter: p.autoCutter !== false,
       printUpiQr: p.printUpiQr !== false,
+      printLogo: p.printLogo !== false,
     }
   } catch {
     return DEFAULTS

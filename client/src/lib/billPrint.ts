@@ -15,7 +15,9 @@ import { couponApi } from './growthApi'
 import { printHtml } from './printHtml'
 import { getConnectedPrinter, preparePrinter, printRaw } from './thermalPrinter'
 import { buildBillBytes } from './thermalBill'
-import { getPrinterPrefs, savePrinterPrefs } from './printerSettings'
+import { logoRasterBytes } from './thermalLogo'
+import { orderTypeLabel } from './orderTypeLabel'
+import { getPrinterPrefs, savePrinterPrefs, paperCols } from './printerSettings'
 
 /** Supported receipt-paper widths in millimetres. */
 export type PaperWidth = 58 | 80
@@ -199,7 +201,7 @@ export function buildBillBody(data: BillData): string {
     <div class="div"></div>
     ${row('Order #', `<b>${esc(order.order_number)}</b>`)}
     ${tableNumber ? row('Table', `<b>${esc(tableNumber)}</b>`) : ''}
-    ${row('Type', `<b>${esc(order.order_type === 'PARCEL' ? 'Pick-up' : order.order_type)}</b>`)}
+    ${row('Type', `<b>${esc(orderTypeLabel(order.order_type))}</b>`)}
     <div class="div"></div>
     <div class="row th"><span>Item</span><span>Amount</span></div>
     ${itemHtml}
@@ -250,7 +252,9 @@ export async function printBillData(data: BillData, printerReady?: boolean): Pro
   const ready = printerReady ?? (await preparePrinter())
   if (ready && getConnectedPrinter()) {
     try {
-      await printRaw(buildBillBytes(data, computeBill(data)))
+      const prefs = getPrinterPrefs()
+      const logo = prefs.printLogo ? await logoRasterBytes(data.restaurant.logo_url, paperCols(prefs)) : null
+      await printRaw(buildBillBytes(data, computeBill(data), logo))
       return
     } catch (err) {
       console.warn('Direct printer failed, using the print dialog instead', err)
