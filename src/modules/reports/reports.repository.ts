@@ -133,6 +133,7 @@ export class ReportsRepository {
        JOIN menu_items mi ON oi.menu_item_id = mi.id
        WHERE o.restaurant_id = $1
          AND o.status <> 'CANCELLED'
+         AND oi.status <> 'CANCELLED'
          ${dateFilter}
        GROUP BY oi.menu_item_id, mi.name
        ORDER BY ${orderBy}
