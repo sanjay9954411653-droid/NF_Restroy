@@ -90,29 +90,22 @@ export class ReportsRepository {
 
   /**
    * Best sellers by quantity. Cancelled orders never count as sold.
-   * With `range`, only orders placed on those LOCAL dates count (the owner's
-   * midnight, not the server's) — used for the dashboard's "today" list.
+   * With `range`, only orders placed on those dates count, in the business
+   * timezone (BUSINESS_TZ) — used for the dashboard's "today" list.
    */
   async getTopSellingItems(
     restaurantId: string,
     limit: number,
-    range?: { from: string; to: string; zoneCandidates: string[]; offsetMinutes: number },
+    range?: { from: string; to: string },
     sort: 'quantity' | 'revenue' = 'quantity',
   ): Promise<TopSellingItem[]> {
     let dateFilter = '';
     const params: unknown[] = [restaurantId, limit];
 
     if (range) {
-      const known = await query(
-        `SELECT name FROM pg_timezone_names WHERE name = ANY($1::text[]) LIMIT 1`,
-        [range.zoneCandidates],
-      );
-      const zone: string | undefined = known.rows[0]?.name;
-      const localDate = zone
-        ? `((o.created_at AT TIME ZONE 'UTC') AT TIME ZONE $5::text)::date`
-        : `(o.created_at + make_interval(mins => $5::int))::date`;
-      dateFilter = `AND ${localDate} BETWEEN $3::date AND $4::date`;
-      params.push(range.from, range.to, zone ?? range.offsetMinutes);
+      // Same business timezone as the dashboard and revenue chart (BUSINESS_TZ)
+      dateFilter = `AND ${localDay('o.created_at')} BETWEEN $3::date AND $4::date`;
+      params.push(range.from, range.to);
     }
 
     // Fixed strings only (never user input), so safe to put in the SQL
@@ -211,29 +204,16 @@ export class ReportsRepository {
     }));
   }
   /**
-   * Money received per payment mode between two local dates (inclusive).
-   * payments.created_at is stored as UTC without a zone, so it is shifted to the
-   * viewer's local time before taking the date. Uses the zone name when Postgres
-   * knows it; otherwise falls back to the browser's fixed UTC offset, so an odd
-   * or legacy zone name (e.g. "Asia/Calcutta") can never break the report.
+   * Money received per payment mode between two business-local dates (inclusive).
+   * payments.created_at is stored as UTC without a zone, so it is converted to the
+   * business timezone (BUSINESS_TZ) before taking the date, exactly like the
+   * dashboard and the daily revenue chart.
    */
   async getPaymentModes(
     restaurantId: string,
     from: string,
     to: string,
-    zoneCandidates: string[],
-    offsetMinutes: number,
   ): Promise<PaymentModeRow[]> {
-    const known = await query(
-      `SELECT name FROM pg_timezone_names WHERE name = ANY($1::text[]) LIMIT 1`,
-      [zoneCandidates],
-    );
-    const zone: string | undefined = known.rows[0]?.name;
-
-    const localDate = zone
-      ? `((created_at AT TIME ZONE 'UTC') AT TIME ZONE $4::text)::date`
-      : `(created_at + make_interval(mins => $4::int))::date`;
-
     const result = await query(
       `SELECT
          method::text AS method,
@@ -243,9 +223,9 @@ export class ReportsRepository {
          COALESCE(SUM(amount) FILTER (WHERE status = 'PENDING'), 0)  AS pending_amount
        FROM payments
        WHERE restaurant_id = $1
-         AND ${localDate} BETWEEN $2::date AND $3::date
+         AND ${localDay('created_at')} BETWEEN $2::date AND $3::date
        GROUP BY method`,
-      [restaurantId, from, to, zone ?? offsetMinutes],
+      [restaurantId, from, to],
     );
 
     // Always return all four modes, even when one has no payments in the range
