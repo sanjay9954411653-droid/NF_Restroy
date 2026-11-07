@@ -67,7 +67,7 @@ const MenuForm: React.FC<MenuFormProps> = ({ menuItem, onClose, onSave }) => {
       setPrice(0);
       setPriceUnit('PIECE');
       setPiecePrice('');
-      setCategoryId('');
+      setCategoryIds([]);
       setPrepTime(15);
       setIsVegetarian(false);
       setIsActive(true);
