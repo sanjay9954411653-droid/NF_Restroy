@@ -326,6 +326,8 @@ export default function PrinterSettings() {
           options={[{ label: 'Yes', value: true }, { label: 'No', value: false }]} />
         <Choice label="Print UPI QR on bill" value={prefs.printUpiQr} onChange={(v) => update({ printUpiQr: v })}
           options={[{ label: 'Yes', value: true }, { label: 'No', value: false }]} />
+        <Choice label="Print logo on bill" value={prefs.printLogo} onChange={(v) => update({ printLogo: v })}
+          options={[{ label: 'Yes', value: true }, { label: 'No', value: false }]} />
       </Card>
 
       <Card padding="md">
