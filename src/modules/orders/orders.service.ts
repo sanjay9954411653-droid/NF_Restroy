@@ -40,7 +40,7 @@ export class OrdersService {
   }
 
   async createOrder(restaurantId: string, createdBy: string | null, payload: CreateOrderRequest): Promise<{ order: Order; items: OrderItem[] }> {
-    const { table_id, order_type, order_source, special_instructions, items } = payload;
+    const { table_id, order_type, order_source, special_instructions, items, guest_label } = payload;
 
     if (order_type === 'DINE_IN' && !table_id) {
       throw new BadRequestError('Table ID is required for dine-in orders');
@@ -89,6 +89,7 @@ export class OrdersService {
       orderItems,
       initialStatus,
       tokenNumber,
+      guest_label ? guest_label.toUpperCase() : null,
     );
   }
 

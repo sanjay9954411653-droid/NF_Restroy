@@ -276,7 +276,7 @@ const Orders: React.FC = () => {
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-gray-500">
                       {order.table?.table_number ? (
-                        <span className="font-medium text-gray-700">Table {order.table.table_number}</span>
+                        <span className="font-medium text-gray-700">Table {order.table.table_number}{(order as any).guest_label ? ` · ${(order as any).guest_label}` : ''}</span>
                       ) : (
                         <span className="uppercase text-xs text-gray-400">{order.order_type}</span>
                       )}

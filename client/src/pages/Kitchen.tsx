@@ -591,7 +591,7 @@ const [pushBusy, setPushBusy] = useState(false)
                         {formatElapsed(roundStartedAt)}
                       </span>
                       {order.table?.table_number && (
-                        <span className="text-gray-400">Table {order.table.table_number}</span>
+                        <span className="text-gray-400">Table {order.table.table_number}{(order as any).guest_label ? ` · Guest ${(order as any).guest_label}` : ''}</span>
                       )}
                       {(order as any).token_number && (
                         <span className="text-emerald-300 font-bold text-sm tracking-wide">

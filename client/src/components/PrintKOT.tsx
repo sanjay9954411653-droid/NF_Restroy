@@ -103,7 +103,7 @@ function printKOTHtml(order: Order, items: OrderItem[], restaurantName = 'Kitche
       <div class="center">
         <div class="order-num">${esc(order.order_number)}</div>
         <div style="font-size:12px;margin-top:2px;">
-          ${order.table?.table_number ? `TABLE ${esc(String(order.table.table_number))}` : esc(order.order_type)}
+          ${order.table?.table_number ? `TABLE ${esc(String(order.table.table_number))}${(order as any).guest_label ? ' - GUEST ' + esc(String((order as any).guest_label)) : ''}` : esc(order.order_type)}
           &nbsp;·&nbsp;
           ${esc(order.order_source)}
         </div>
@@ -183,7 +183,7 @@ const PrintKOT: React.FC<PrintKOTProps> = ({ order, items, restaurantName = 'Kit
           <div className="text-center mb-3">
             <p className="text-3xl font-bold tracking-wider">{order.order_number}</p>
             <p className="text-xs text-gray-500 mt-1">
-              {order.table?.table_number ? `Table ${order.table.table_number}` : order.order_type}
+              {order.table?.table_number ? `Table ${order.table.table_number}${(order as any).guest_label ? ' · Guest ' + (order as any).guest_label : ''}` : order.order_type}
               {' · '}{order.order_source}
             </p>
           </div>

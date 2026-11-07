@@ -47,6 +47,7 @@ export const menuApi = {
 
 export interface CreateOrderPayload {
   table_id?: string | null
+  guest_label?: string | null
   order_type: OrderType
   order_source: OrderSource
   special_instructions?: string

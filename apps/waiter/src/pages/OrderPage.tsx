@@ -23,6 +23,7 @@ const OrderPage: React.FC = () => {
   const { orderId } = useParams<{ orderId?: string }>()  // set when adding to existing order
   const [searchParams] = useSearchParams()
   const tableLabel = searchParams.get('table')
+  const guestLabel = searchParams.get('guest')
 
   const isAddMode = !!orderId
 
@@ -64,6 +65,7 @@ const OrderPage: React.FC = () => {
         const { tableId } = useCartStore.getState()
         const order = await submitOrder({
           table_id:    tableId,
+          guest_label: searchParams.get('guest') || undefined,
           order_type:  orderType,
           order_source: 'WAITER',
           special_instructions: notes || undefined,
@@ -103,8 +105,8 @@ const OrderPage: React.FC = () => {
             </h1>
             <p className="text-xs text-gray-500">
               {isAddMode
-                ? `Adding to order · Table ${tableLabel || ''}`
-                : tableNumber ? `Table ${tableNumber}` : orderType}
+                ? `Adding to order · Table ${tableLabel || ''}${guestLabel ? ` · Guest ${guestLabel}` : ''}`
+                : tableNumber ? `Table ${tableNumber}${guestLabel ? ` · Guest ${guestLabel}` : ''}` : orderType}
             </p>
           </div>
           <button onClick={() => navigate(-1)} className="text-sm text-gray-500 hover:text-gray-700">

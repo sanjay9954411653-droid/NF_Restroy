@@ -12,6 +12,7 @@ export const OrderItemRequestSchema = z.object({
 
 export const CreateOrderRequestSchema = z.object({
   table_id: z.string().uuid('Table ID must be a valid UUID').optional().nullable(),
+  guest_label: z.string().trim().min(1).max(5).optional().nullable(),
   order_type: z.enum(['DINE_IN', 'PARCEL', 'ONLINE']),
   order_source: z.enum(['WAITER', 'RECEPTION', 'QR', 'WHATSAPP', 'ZOMATO']),
   special_instructions: z.string().max(1000).optional(),
@@ -50,6 +51,7 @@ export interface Order {
   id: string;
   restaurant_id: string;
   table_id: string | null;
+  guest_label?: string | null;
   order_number: string;
   token_number: string | null;
   order_type: 'DINE_IN' | 'PARCEL' | 'ONLINE';

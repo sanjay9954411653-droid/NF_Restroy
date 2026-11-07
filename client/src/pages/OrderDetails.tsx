@@ -227,7 +227,7 @@ const OrderDetails: React.FC = () => {
               { label: 'Order #', value: order.order_number },
               { label: 'Type', value: order.order_type },
               { label: 'Source', value: order.order_source },
-              { label: 'Table', value: order.table?.table_number ? `Table ${order.table.table_number}` : '—' },
+              { label: 'Table', value: order.table?.table_number ? `Table ${order.table.table_number}${(order as any).guest_label ? ` · Guest ${(order as any).guest_label}` : ''}` : '—' },
               { label: 'Total', value: formatCurrency(grandTotal ?? Number(order.total_amount || 0)) },
               { label: 'Priority', value: order.priority_score },
               { label: 'Updated', value: formatDate(order.updated_at) },

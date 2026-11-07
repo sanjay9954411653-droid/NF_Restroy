@@ -22,11 +22,14 @@ export interface TableActiveOrder {
   order_type: string
   created_at: string
   item_count: number
+  guest_label?: string | null
 }
 
 /** A table enriched with its current occupancy / active order */
 export interface TableWithStatus extends Table {
   active_order: TableActiveOrder | null
+  /** All open orders on this table (guests A, B, C ...) */
+  active_orders?: TableActiveOrder[]
 }
 
 export interface MenuCategory {

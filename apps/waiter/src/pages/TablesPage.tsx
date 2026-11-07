@@ -56,10 +56,25 @@ const TablesPage: React.FC = () => {
     return () => clearInterval(t)
   }, [fetchTables])
 
+  const [picker, setPicker] = useState<TableWithStatus | null>(null)
+
+  const openOrdersOf = (t: TableWithStatus) => t.active_orders && t.active_orders.length > 0 ? t.active_orders : (t.active_order ? [t.active_order] : [])
+  const nextGuestLabel = (t: TableWithStatus) => {
+    const used = openOrdersOf(t).map((o) => o.guest_label || 'A')
+    return ['A', 'B', 'C', 'D', 'E', 'F'].find((l) => !used.includes(l)) || 'G'
+  }
+
+  const startSeparateOrder = (table: TableWithStatus) => {
+    clear()
+    setTable(table.id, table.table_number)
+    setOrderType('DINE_IN')
+    navigate(`/order/new?table=${table.table_number}&guest=${nextGuestLabel(table)}`)
+  }
+
   const handleTableSelect = (table: TableWithStatus) => {
     if (table.active_order) {
-      // Occupied — go straight to adding items to the running tab
-      navigate(`/order/add/${table.active_order.id}?table=${table.table_number}`)
+      // Occupied — let the waiter pick which guest's order, or start a separate one
+      setPicker(table)
       return
     }
     // Free — start a new dine-in order
@@ -144,7 +159,9 @@ const TablesPage: React.FC = () => {
                   </span>
                   {table.active_order ? (
                     <p className="text-xs font-semibold text-gray-700 mt-1">
-                      ₹{payable(table.active_order.total_amount).toFixed(2)}
+                      {openOrdersOf(table).length > 1
+                        ? `${openOrdersOf(table).length} orders`
+                        : `₹${payable(table.active_order.total_amount).toFixed(2)}`}
                     </p>
                   ) : (
                     <p className="text-[10px] text-gray-400 mt-1">{table.seats} seats</p>
@@ -155,6 +172,35 @@ const TablesPage: React.FC = () => {
           </div>
         )}
       </div>
+      {picker && (
+        <div className="fixed inset-0 z-50 flex items-end bg-black/40" onClick={() => setPicker(null)}>
+          <div className="w-full bg-white rounded-t-2xl p-4 space-y-2 max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-1">
+              <p className="font-bold text-gray-900">Table {picker.table_number}</p>
+              <button onClick={() => setPicker(null)} className="text-gray-400 text-sm">Close</button>
+            </div>
+            {openOrdersOf(picker).map((o) => (
+              <button
+                key={o.id}
+                onClick={() => { navigate(`/order/add/${o.id}?table=${picker.table_number}&guest=${o.guest_label || 'A'}`); setPicker(null) }}
+                className="w-full card p-3 flex items-center justify-between text-left hover:border-indigo-300"
+              >
+                <span>
+                  <span className="font-semibold text-gray-900">Guest {o.guest_label || 'A'}</span>
+                  <span className="text-xs text-gray-500 ml-2">{o.item_count} items · {o.status}</span>
+                </span>
+                <span className="font-semibold text-gray-700">₹{payable(o.total_amount).toFixed(2)}</span>
+              </button>
+            ))}
+            <button
+              onClick={() => { const t = picker; setPicker(null); startSeparateOrder(t) }}
+              className="w-full p-3 rounded-xl bg-indigo-600 text-white font-semibold"
+            >
+              + New separate order (Guest {nextGuestLabel(picker)})
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

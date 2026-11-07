@@ -24,15 +24,16 @@ export class OrdersRepository {
     }>,
     initialStatus: string = 'CREATED',
     tokenNumber: string | null = null,
+    guestLabel: string | null = null,
   ): Promise<{ order: Order; items: OrderItem[] }> {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
 
       const orderResult = await client.query(
-        `INSERT INTO orders (restaurant_id, table_id, order_number, token_number, order_type, order_source, status, total_amount, priority_score, special_instructions, created_by)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-         RETURNING id, restaurant_id, table_id, order_number, token_number, order_type, order_source, status, total_amount, priority_score, special_instructions, created_by, created_at, updated_at, completed_at`,
+        `INSERT INTO orders (restaurant_id, table_id, order_number, token_number, order_type, order_source, status, total_amount, priority_score, special_instructions, created_by, guest_label)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+         RETURNING id, restaurant_id, table_id, guest_label, order_number, token_number, order_type, order_source, status, total_amount, priority_score, special_instructions, created_by, created_at, updated_at, completed_at`,
         [
           restaurantId,
           tableId,
@@ -45,6 +46,7 @@ export class OrdersRepository {
           priorityScore,
           specialInstructions,
           createdBy,
+          guestLabel,
         ],
       );
 
@@ -104,7 +106,7 @@ export class OrdersRepository {
     const result = await query(
       `
       SELECT
-        o.id, o.restaurant_id, o.table_id, o.order_number, o.order_type,
+        o.id, o.restaurant_id, o.table_id, o.guest_label, o.order_number, o.order_type,
         o.order_source, o.status, o.total_amount, o.priority_score,
         o.special_instructions, o.created_by, o.created_at, o.updated_at, o.completed_at,
         rt.id AS table_join_id,
@@ -321,6 +323,7 @@ export class OrdersRepository {
       o.id,
       o.restaurant_id,
       o.table_id,
+      o.guest_label,
       o.order_number,
       o.order_type,
       o.order_source,
@@ -459,7 +462,7 @@ export class OrdersRepository {
     const result = await query(
       `
       SELECT
-        o.id, o.restaurant_id, o.table_id, o.order_number, o.order_type,
+        o.id, o.restaurant_id, o.table_id, o.guest_label, o.order_number, o.order_type,
         o.order_source, o.status, o.total_amount, o.priority_score,
         o.special_instructions, o.created_by, o.created_at, o.updated_at, o.completed_at,
         rt.id AS table_join_id, rt.table_number,

@@ -122,6 +122,31 @@ export class TablesRepository {
       [restaurantId]
     );
 
+    // All open orders per table (several guests can share one table: A, B, C ...)
+    const openOrders = await query(
+      `SELECT o.id, o.table_id, o.order_number, o.status, o.total_amount, o.order_type, o.created_at, o.guest_label,
+              (SELECT COALESCE(SUM(oi.quantity), 0) FROM order_items oi WHERE oi.order_id = o.id AND oi.status <> 'CANCELLED') AS item_count
+       FROM orders o
+       WHERE o.restaurant_id = $1 AND o.table_id IS NOT NULL AND o.status NOT IN ('COMPLETED', 'CANCELLED')
+       ORDER BY o.created_at ASC`,
+      [restaurantId],
+    );
+    const ordersByTable = new Map<string, any[]>();
+    for (const o of openOrders.rows) {
+      const list = ordersByTable.get(o.table_id) || [];
+      list.push({
+        id: o.id,
+        order_number: o.order_number,
+        status: o.status,
+        total_amount: Number(o.total_amount) || 0,
+        order_type: o.order_type,
+        created_at: o.created_at,
+        item_count: Number(o.item_count) || 0,
+        guest_label: o.guest_label || null,
+      });
+      ordersByTable.set(o.table_id, list);
+    }
+
     // Reshape flat rows into a clean { ...table, active_order: {...} | null } object
     return result.rows.map((row) => ({
       id: row.id,
@@ -133,6 +158,7 @@ export class TablesRepository {
       passcode: row.passcode,
       created_at: row.created_at,
       updated_at: row.updated_at,
+      active_orders: ordersByTable.get(row.id) || [],
       active_order: row.active_order_id
         ? {
             id: row.active_order_id,
