@@ -1425,14 +1425,6 @@ const CustomerApp: React.FC = () => {
         </button>
       )}
 
-      {!orderingEnabled && (
-        <div className="fixed bottom-0 inset-x-0 p-4 z-10">
-          <div className="max-w-2xl mx-auto bg-gray-900 text-white text-sm text-center rounded-2xl px-4 py-3 shadow-xl">
-            Ordering is currently unavailable. You can browse the menu.
-          </div>
-        </div>
-      )}
-
       {/* Sticky bottom bar */}
       {orderingEnabled && cartCount > 0 && !cartOpen && (
         <div className="fixed bottom-0 inset-x-0 p-4 z-10">
