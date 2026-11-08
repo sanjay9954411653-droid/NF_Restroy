@@ -26,6 +26,7 @@ import { authenticate, AuthenticatedRequest } from '@/shared/middleware/authenti
 import { superAdmin } from '@/shared/middleware/superAdmin';
 import { successResponse } from '@/shared/utils/responseHandler';
 import { BadRequestError, NotFoundError } from '@/shared/errors/AppError';
+import { testDataService, TestDataFilterSchema, DemoModeSchema } from './testData.service';
 import { subscriptionsService } from '@/modules/subscriptions/subscriptions.service';
 import rateLimit from 'express-rate-limit';
 
@@ -188,7 +189,7 @@ router.get('/restaurants/:id', authenticate, superAdmin, async (req: Request, re
   try {
     const { id } = req.params;
     const restRes = await query(
-      `SELECT id, name, slug, features, qr_mode, auto_approve_online_orders, delay_threshold_minutes, created_at
+      `SELECT id, name, slug, features, qr_mode, auto_approve_online_orders, delay_threshold_minutes, demo_mode, created_at
        FROM restaurants WHERE id = $1`, [id],
     );
     if (restRes.rows.length === 0) throw new NotFoundError('Restaurant not found');
@@ -198,7 +199,7 @@ router.get('/restaurants/:id', authenticate, superAdmin, async (req: Request, re
       query(`SELECT id, email, name, role, is_active, created_at FROM users WHERE restaurant_id = $1 ORDER BY created_at`, [id]),
       query(`SELECT s.*, p.name as plan_name, p.price as plan_price FROM subscriptions s LEFT JOIN subscription_plans p ON p.id = s.plan_id WHERE s.restaurant_id = $1`, [id]),
       query(`SELECT id, invoice_number, amount, status, due_date, paid_at, created_at FROM invoices WHERE restaurant_id = $1 ORDER BY created_at DESC LIMIT 20`, [id]),
-      query(`SELECT COUNT(*) as total_orders, (SELECT COALESCE(SUM(amount),0) FROM payments WHERE restaurant_id = $1 AND status = 'PAID') as total_revenue FROM orders WHERE restaurant_id = $1 AND status IN ('PAYMENT_PENDING','COMPLETED')`, [id]),
+      query(`SELECT COUNT(*) as total_orders, (SELECT COALESCE(SUM(amount),0) FROM payments WHERE restaurant_id = $1 AND status = 'PAID' AND is_test = FALSE) as total_revenue FROM orders WHERE restaurant_id = $1 AND is_test = FALSE AND status IN ('PAYMENT_PENDING','COMPLETED')`, [id]),
     ]);
 
     res.json(successResponse({
@@ -223,6 +224,48 @@ router.put('/restaurants/:id/features', authenticate, superAdmin, async (req: Re
       [JSON.stringify(features), id],
     );
     res.json(successResponse({ message: 'Features updated' }));
+  } catch (err) { next(err); }
+});
+
+
+// ── SUPER-ADMIN: Test data tools (preview / backup / clear) + Demo mode ─────
+// See testData.service.ts. Every route is super-admin only and scoped to ONE restaurant.
+
+router.post('/restaurants/:id/test-data/preview', authenticate, superAdmin, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const f = TestDataFilterSchema.parse(req.body);
+    res.json(successResponse(await testDataService.preview(req.params.id, f)));
+  } catch (err) { next(err); }
+});
+
+router.post('/restaurants/:id/test-data/backup', authenticate, superAdmin, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const f = TestDataFilterSchema.parse(req.body);
+    const data = await testDataService.backup(req.params.id, f);
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Disposition', `attachment; filename="orders-backup-${new Date().toISOString().slice(0, 10)}.json"`);
+    res.send(JSON.stringify(data, null, 2));
+  } catch (err) { next(err); }
+});
+
+router.post('/restaurants/:id/test-data/clear', authenticate, superAdmin, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  try {
+    const f = TestDataFilterSchema.parse(req.body);
+    const counts = await testDataService.clear(req.params.id, f, req.user?.email ?? 'unknown');
+    res.json(successResponse({ counts }, { message: 'Test data cleared' }));
+  } catch (err) { next(err); }
+});
+
+router.get('/restaurants/:id/test-data/log', authenticate, superAdmin, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    res.json(successResponse(await testDataService.log(req.params.id)));
+  } catch (err) { next(err); }
+});
+
+router.put('/restaurants/:id/demo-mode', authenticate, superAdmin, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { enabled } = DemoModeSchema.parse(req.body);
+    res.json(successResponse(await testDataService.setDemoMode(req.params.id, enabled)));
   } catch (err) { next(err); }
 });
 

@@ -2,7 +2,7 @@ import { query } from '@/config/database';
 import { Restaurant, RestaurantSection, RestaurantStats, RestaurantTheme } from './restaurants.types';
 import { isToday, todayLocal } from '@/shared/businessTime';
 
-const RESTAURANT_COLS = `id, name, slug, auto_approve_online_orders, delay_threshold_minutes,
+const RESTAURANT_COLS = `id, name, slug, demo_mode, auto_approve_online_orders, delay_threshold_minutes,
   qr_mode, features, gstin, tax_rate::float8 AS tax_rate, tax_inclusive,
   restaurant_type, qsr_enabled, token_prefix, token_daily_reset, token_counter,
   logo_url, hero_image_url, tagline, description, address, phone, whatsapp,

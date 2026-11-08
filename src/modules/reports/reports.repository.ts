@@ -18,46 +18,54 @@ export class ReportsRepository {
          (SELECT COUNT(*)
           FROM orders
           WHERE restaurant_id = $1
+          AND is_test = FALSE
           AND ${isToday('created_at')}) AS total_orders_today,
 
          (SELECT COUNT(*)
           FROM orders
           WHERE restaurant_id = $1
+          AND is_test = FALSE
           AND status = 'COMPLETED'
           AND ${isToday('created_at')}) AS completed_orders_today,
 
          (SELECT COUNT(*)
           FROM orders
           WHERE restaurant_id = $1
+          AND is_test = FALSE
           AND status = 'CANCELLED'
           AND ${isToday('created_at')}) AS cancelled_orders_today,
 
          (SELECT COUNT(*)
           FROM orders
           WHERE restaurant_id = $1
+          AND is_test = FALSE
           AND status NOT IN ('COMPLETED', 'CANCELLED')
           AND ${isToday('created_at')}) AS active_orders,
 
          (SELECT COALESCE(SUM(amount), 0)
           FROM payments
           WHERE restaurant_id = $1
+          AND is_test = FALSE
           AND status = 'PAID'
           AND ${isToday('created_at')}) AS revenue_today,
 
          (SELECT COUNT(*)
           FROM payments
           WHERE restaurant_id = $1
+          AND is_test = FALSE
           AND ${isToday('created_at')}) AS payments_today,
 
          (SELECT COALESCE(SUM(amount), 0)
           FROM payments
           WHERE restaurant_id = $1
+          AND is_test = FALSE
           AND status = 'PAID'
           AND ${isToday('created_at')}) AS paid_amount_today,
 
          (SELECT COALESCE(SUM(amount), 0)
           FROM payments
           WHERE restaurant_id = $1
+          AND is_test = FALSE
           AND status = 'REFUNDED'
           AND ${isToday('created_at')}) AS refunded_amount_today,
 
@@ -129,6 +137,7 @@ export class ReportsRepository {
        JOIN orders o ON oi.order_id = o.id
        JOIN menu_items mi ON oi.menu_item_id = mi.id
        WHERE o.restaurant_id = $1
+         AND o.is_test = FALSE
          AND o.status <> 'CANCELLED'
          AND oi.status <> 'CANCELLED'
          ${dateFilter}
@@ -162,6 +171,7 @@ export class ReportsRepository {
          JOIN orders o ON oi.order_id = o.id
          LEFT JOIN restaurant_tables rt ON rt.id = o.table_id
          WHERE o.restaurant_id = $1
+           AND o.is_test = FALSE
            AND oi.menu_item_id = ANY($2::uuid[])
            AND o.status <> 'CANCELLED'
            AND oi.status <> 'CANCELLED'
@@ -208,6 +218,7 @@ export class ReportsRepository {
        LEFT JOIN payments p
          ON ${localDay('p.created_at')} = date_series
          AND p.restaurant_id = $1
+         AND p.is_test = FALSE
          AND p.status = 'PAID'
        GROUP BY date_series
        ORDER BY date_series ASC`,
@@ -258,6 +269,7 @@ export class ReportsRepository {
     to: string,
   ): Promise<{ by_source: OrderBreakdownRow[]; by_type: OrderBreakdownRow[]; by_staff: StaffOrderRow[] }> {
     const where = `o.restaurant_id = $1
+         AND o.is_test = FALSE
          AND o.status <> 'CANCELLED'
          AND ${localDay('o.created_at')} BETWEEN $2::date AND $3::date`;
     const params = [restaurantId, from, to];
@@ -329,6 +341,7 @@ export class ReportsRepository {
          COALESCE(SUM(amount) FILTER (WHERE status = 'PENDING'), 0)  AS pending_amount
        FROM payments
        WHERE restaurant_id = $1
+         AND is_test = FALSE
          AND ${localDay('created_at')} BETWEEN $2::date AND $3::date
        GROUP BY method`,
       [restaurantId, from, to],

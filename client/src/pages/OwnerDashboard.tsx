@@ -21,6 +21,7 @@ import Input from '../components/Input'
 import Loading from '../components/Loading'
 import EmptyState from '../components/EmptyState'
 import Modal from '../components/Modal'
+import TestDataTools from '../components/TestDataTools'
 import { formatCurrency, formatDate, formatRelative } from '../lib/utils'
 import { DEFAULT_FEATURES_BY_TYPE, type RestaurantType } from '../config/restaurantTypes'
 import {
@@ -454,6 +455,14 @@ const RestaurantsTab: React.FC = () => {
                 </div>
               </div>
             )}
+
+            {/* ── Demo mode + clear test data ───────────────────────── */}
+            <TestDataTools
+              restaurantId={detail.id}
+              restaurantName={detail.name}
+              demoMode={!!detail.demo_mode}
+              onDemoChange={(v) => setDetail((d: any) => (d ? { ...d, demo_mode: v } : d))}
+            />
 
             {/* ── Users ────────────────────────────────────────────── */}
             {detail.users?.length > 0 && (

@@ -7,6 +7,7 @@ import { useFeatures } from '../contexts/FeaturesContext'
 import { NAV_TYPE_VISIBILITY } from '../config/restaurantTypes'
 import type { RestaurantType } from '../config/restaurantTypes'
 import SubscriptionBanner from './SubscriptionBanner'
+import DemoBanner from './DemoBanner'
 import { getInitials } from '../lib/utils'
 import api from '../api'
 import {
@@ -449,6 +450,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
         {/* Subscription status banner — full width under the header */}
         <SubscriptionBanner />
+        <DemoBanner />
 
         {/* Page content */}
         <main className="flex-1 p-4 lg:p-8 max-w-screen-2xl w-full mx-auto">
