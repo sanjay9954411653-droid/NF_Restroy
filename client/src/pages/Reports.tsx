@@ -8,6 +8,7 @@ import api, { getErrorMessage } from '../api'
 import { formatCurrency } from '../lib/utils'
 import Card from '../components/Card'
 import Loading from '../components/Loading'
+import { useSocket } from '../contexts/SocketContext'
 import Badge from '../components/Badge'
 import PaymentModeReport from '../components/PaymentModeReport'
 import TopItemsReport from '../components/TopItemsReport'
@@ -53,6 +54,9 @@ const Reports: React.FC = () => {
   const [alerts, setAlerts] = useState<InventoryAlert[]>([])
   const [loading, setLoading] = useState(true)
   const [revenueDays, setRevenueDays] = useState(7)
+  const { socket } = useSocket()
+  // Bumped whenever something happens (order placed / paid / completed / cancelled) so every card reloads
+  const [refreshKey, setRefreshKey] = useState(0)
 
   const fetchAll = async (days = revenueDays) => {
     try {
@@ -71,7 +75,25 @@ const Reports: React.FC = () => {
     }
   }
 
-  useEffect(() => { fetchAll() }, [])
+  // Reload the top cards + chart whenever refreshKey changes (first load included)
+  useEffect(() => { fetchAll() }, [refreshKey])
+
+  // Live updates: refresh a moment after any order/payment event, plus once a minute as a safety net
+  useEffect(() => {
+    const events = ['ORDER_CREATED', 'ORDER_UPDATED', 'ORDER_COMPLETED', 'ORDER_CANCELLED', 'ORDER_DELETED', 'PAYMENT_CREATED']
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const bump = () => {
+      if (timer) clearTimeout(timer)
+      timer = setTimeout(() => setRefreshKey((k) => k + 1), 800)
+    }
+    events.forEach((e) => socket?.on(e, bump))
+    const interval = setInterval(() => setRefreshKey((k) => k + 1), 60_000)
+    return () => {
+      if (timer) clearTimeout(timer)
+      events.forEach((e) => socket?.off(e, bump))
+      clearInterval(interval)
+    }
+  }, [socket])
 
   const handleDaysChange = (days: number) => {
     setRevenueDays(days)
@@ -133,10 +155,10 @@ const Reports: React.FC = () => {
       </div>
 
       {/* Cash / UPI / Card / Online collections */}
-      <PaymentModeReport />
+      <PaymentModeReport refreshKey={refreshKey} />
 
       {/* Orders by source (QR, waiter, WhatsApp…) and by staff member */}
-      <OrderBreakdownReport />
+      <OrderBreakdownReport refreshKey={refreshKey} />
 
       {/* Revenue chart */}
       <Card>
@@ -217,7 +239,7 @@ const Reports: React.FC = () => {
       </Card>
 
       {/* Top selling items — filter by period, rank by quantity or revenue */}
-      <TopItemsReport />
+      <TopItemsReport refreshKey={refreshKey} />
 
       {/* Inventory alerts */}
       {alerts.length > 0 && (

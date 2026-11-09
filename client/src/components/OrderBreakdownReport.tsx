@@ -44,7 +44,7 @@ const RANGES: { key: Exclude<RangeKey, 'all'>; label: string }[] = [
   { key: 'custom', label: 'Custom' },
 ]
 
-const OrderBreakdownReport: React.FC = () => {
+const OrderBreakdownReport: React.FC<{ refreshKey?: number }> = ({ refreshKey = 0 }) => {
   const [range, setRange] = useState<Exclude<RangeKey, 'all'>>('today')
   const [customFrom, setCustomFrom] = useState(ymd(new Date()))
   const [customTo, setCustomTo] = useState(ymd(new Date()))
@@ -70,7 +70,7 @@ const OrderBreakdownReport: React.FC = () => {
     } finally {
       if (ticket === latest.current) setLoading(false)
     }
-  }, [range, customFrom, customTo])
+  }, [range, customFrom, customTo, refreshKey])
 
   useEffect(() => { load() }, [load])
 

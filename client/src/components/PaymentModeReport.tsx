@@ -59,7 +59,7 @@ function rangeDates(key: RangeKey): { from: string; to: string } {
   }
 }
 
-const PaymentModeReport: React.FC = () => {
+const PaymentModeReport: React.FC<{ refreshKey?: number }> = ({ refreshKey = 0 }) => {
   const [range, setRange] = useState<RangeKey>('today')
   const [customFrom, setCustomFrom] = useState(ymd(new Date()))
   const [customTo, setCustomTo] = useState(ymd(new Date()))
@@ -86,7 +86,7 @@ const PaymentModeReport: React.FC = () => {
     } finally {
       if (ticket === latest.current) setLoading(false)
     }
-  }, [range, customFrom, customTo])
+  }, [range, customFrom, customTo, refreshKey])
 
   useEffect(() => { load() }, [load])
 

@@ -38,7 +38,7 @@ const RANGES: { key: RangeKey; label: string }[] = [
   { key: 'custom', label: 'Custom' },
 ]
 
-const TopItemsReport: React.FC = () => {
+const TopItemsReport: React.FC<{ refreshKey?: number }> = ({ refreshKey = 0 }) => {
   const [range, setRange] = useState<RangeKey>('7d')
   const [sort, setSort] = useState<SortKey>('quantity')
   const [customFrom, setCustomFrom] = useState(ymd(new Date()))
@@ -77,7 +77,7 @@ const TopItemsReport: React.FC = () => {
     } finally {
       if (ticket === latest.current) setLoading(false)
     }
-  }, [range, sort, customFrom, customTo])
+  }, [range, sort, customFrom, customTo, refreshKey])
 
   useEffect(() => { load() }, [load])
 
