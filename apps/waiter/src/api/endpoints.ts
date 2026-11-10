@@ -59,7 +59,7 @@ export interface CreateOrderPayload {
   order_type: OrderType
   order_source: OrderSource
   special_instructions?: string
-  items: Array<{ menu_item_id: string; quantity: number; special_instructions?: string }>
+  items: Array<{ menu_item_id: string; quantity: number; special_instructions?: string; weight_grams?: number }>
   idempotency_key?: string  // prevents duplicate orders on retry
 }
 
@@ -97,6 +97,7 @@ export const ordersApi = {
         menu_item_id: i.menu_item_id,
         quantity: i.quantity,
         special_instructions: i.special_instructions,
+        weight_grams: i.weight_grams,
       })),
     }),
 

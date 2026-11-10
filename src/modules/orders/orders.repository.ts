@@ -761,7 +761,7 @@ export class OrdersRepository {
           AND NOW() > o.created_at + (r.delay_threshold_minutes || ' minutes')::interval
         ) as delayed_orders_count,
         (SELECT COALESCE(SUM(p.amount), 0) FROM payments p
-          WHERE p.restaurant_id = $1 AND p.status = 'PAID' AND ${isToday('p.created_at')}) as revenue_today
+          WHERE p.restaurant_id = $1 AND p.is_test = FALSE AND p.status = 'PAID' AND ${isToday('p.created_at')}) as revenue_today
        FROM orders o
        JOIN restaurants r ON o.restaurant_id = r.id
        WHERE o.restaurant_id = $1`,

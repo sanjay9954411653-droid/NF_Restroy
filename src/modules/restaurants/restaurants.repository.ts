@@ -187,7 +187,7 @@ export class RestaurantsRepository {
       `SELECT
          (SELECT COUNT(*) FROM orders WHERE restaurant_id = $1 AND ${isToday('created_at')}) as total_orders,
          (SELECT COALESCE(SUM(amount), 0) FROM payments
-           WHERE restaurant_id = $1 AND status = 'PAID' AND ${isToday('created_at')}) as revenue`,
+           WHERE restaurant_id = $1 AND is_test = FALSE AND status = 'PAID' AND ${isToday('created_at')}) as revenue`,
       [restaurantId],
     );
     const users = usersResult.rows[0];

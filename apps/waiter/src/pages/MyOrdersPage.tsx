@@ -20,6 +20,7 @@ import { formatDistanceToNow } from 'date-fns'
 import type { Order, OrderStatus } from '../types'
 import { getReadyRounds, isFullyServed, orderItemsOf, isIncomingPending, SOURCE_LABEL } from '../lib/orderRounds'
 import { usePayable } from '../lib/usePayable'
+import { formatWeight } from '../lib/weight'
 import CancelItemsSheet from '../components/CancelItemsSheet'
 import { printKotForOrder, reprintKotForOrder } from '../lib/kotPrinter'
 
@@ -622,7 +623,7 @@ const MyOrdersPage: React.FC = () => {
                     <ul className="text-sm text-gray-700 space-y-0.5">
                       {items.map((it, i) => (
                         <li key={it.id || i}>
-                          <span className="font-semibold">{it.quantity}×</span> {it.menu_item_name || 'Item'}
+                          <span className="font-semibold">{it.weight_grams ? formatWeight(it.weight_grams) : `${it.quantity}×`}</span> {it.menu_item_name || 'Item'}
                           {it.special_instructions && <span className="text-gray-400"> — {it.special_instructions}</span>}
                         </li>
                       ))}
@@ -689,7 +690,7 @@ const MyOrdersPage: React.FC = () => {
                     <ul className="text-sm text-gray-700 space-y-0.5">
                       {items.map((it, i) => (
                         <li key={it.id || i}>
-                          <span className="font-semibold">{it.quantity}×</span> {it.menu_item_name || 'Item'}
+                          <span className="font-semibold">{it.weight_grams ? formatWeight(it.weight_grams) : `${it.quantity}×`}</span> {it.menu_item_name || 'Item'}
                         </li>
                       ))}
                     </ul>

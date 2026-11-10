@@ -5,6 +5,7 @@ import { ordersApi } from '../api/endpoints'
 import { orderItemsOf } from '../lib/orderRounds'
 import { printCancellationSlip } from '../lib/kotPrinter'
 import type { Order } from '../types'
+import { formatWeight } from '../lib/weight'
 
 interface Props {
   order: Order
@@ -79,7 +80,7 @@ const CancelItemsSheet: React.FC<Props> = ({ order, onClose, onDone }) => {
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-gray-900 truncate">{it.menu_item_name || 'Item'}</p>
                   <p className="text-xs text-gray-500">
-                    {it.quantity} ordered{served ? ' · already served' : it.status === 'DONE' ? ' · ready' : ''}
+                    {it.weight_grams ? formatWeight(it.weight_grams) : `${it.quantity} ordered`}{served ? ' · already served' : it.status === 'DONE' ? ' · ready' : ''}
                   </p>
                 </div>
                 {served ? (

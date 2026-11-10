@@ -52,6 +52,8 @@ export interface MenuItem {
   is_active: boolean
   skip_kitchen?: boolean     // ready-made: skips the kitchen
   ready_in_stock?: boolean   // false = batch finished, goes to the kitchen
+  price_unit?: 'PIECE' | 'KG' | '100G'  // KG / 100G: `price` is per kg / per 100 g
+  piece_price?: number | null           // by-weight items only: price of ONE piece (null = weight only)
 }
 
 export type OrderStatus = 'CREATED' | 'ACCEPTED' | 'PREPARING' | 'READY' | 'COMPLETED' | 'CANCELLED'
@@ -70,6 +72,7 @@ export interface OrderItem {
   round?: number
   served_at?: string | null
   skip_kitchen?: boolean
+  weight_grams?: number | null   // by-weight lines: the weighed portion
 }
 
 export interface Order {
@@ -90,12 +93,19 @@ export interface Order {
 
 // Cart line — what the waiter is building before submitting
 export interface CartLine {
+  line_id: string               // unique per cart line (an item can have several weighed lines)
   menu_item_id: string
   name: string
-  price: number
-  quantity: number
+  price: number                 // by-weight line: the amount for that weight; otherwise per piece
+  quantity: number              // by-weight lines are always 1
   special_instructions?: string
+  weight_grams?: number         // by-weight line only
+  price_unit?: 'KG' | '100G'    // by-weight line only (for display)
+  unit_rate?: number            // menu price per kg / per 100 g (for display)
 }
+
+/** What the screens pass to addItem — the store adds the line_id. */
+export type NewCartLine = Omit<CartLine, 'line_id'>
 
 // Offline queue entry — order that couldn't be sent due to no connectivity
 export interface QueuedOrder {
@@ -106,7 +116,7 @@ export interface QueuedOrder {
     order_type: OrderType
     order_source: OrderSource
     special_instructions?: string
-    items: Array<{ menu_item_id: string; quantity: number; special_instructions?: string }>
+    items: Array<{ menu_item_id: string; quantity: number; special_instructions?: string; weight_grams?: number }>
   }
   created_at: string
   retries: number

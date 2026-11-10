@@ -1,10 +1,13 @@
 /**
  * Cart store — manages the current order being built.
  * Cleared after order is submitted.
+ *
+ * Lines are identified by line_id (not menu_item_id) because one by-weight dish
+ * can appear several times (e.g. 500 g and 250 g), each as its own line.
  */
 
 import { create } from 'zustand'
-import type { CartLine, OrderType, OrderSource } from '../types'
+import type { CartLine, NewCartLine, OrderType, OrderSource } from '../types'
 
 interface CartState {
   tableId:      string | null
@@ -17,15 +20,19 @@ interface CartState {
   setTable:     (id: string | null, number: string | null) => void
   setOrderType: (type: OrderType) => void
   setNotes:     (notes: string) => void
-  addItem:      (item: CartLine) => void
-  removeItem:   (menuItemId: string) => void
-  changeQty:    (menuItemId: string, delta: number) => void
-  setNote:      (menuItemId: string, note: string) => void
+  addItem:      (item: NewCartLine) => void
+  removeItem:   (lineId: string) => void
+  changeQty:    (lineId: string, delta: number) => void
+  setNote:      (lineId: string, note: string) => void
+  setWeight:    (lineId: string, grams: number, amount: number) => void
   clear:        () => void
 
   total:        () => number
   count:        () => number
 }
+
+let lineSeq = 0
+const newLineId = () => `l${Date.now().toString(36)}${(lineSeq++).toString(36)}`
 
 export const useCartStore = create<CartState>()((set, get) => ({
   tableId:     null,
@@ -41,34 +48,46 @@ export const useCartStore = create<CartState>()((set, get) => ({
 
   addItem: (item) => {
     set((state) => {
-      // One line per dish: tapping + again raises its quantity and keeps any note on it
-      const existing = state.cart.find((c) => c.menu_item_id === item.menu_item_id)
+      // A weighed portion is always its own line (the server wants quantity 1 per weighed line)
+      if (item.weight_grams) {
+        return { cart: [...state.cart, { ...item, line_id: newLineId() }] }
+      }
+      // Normal / by-piece: one line per dish — tapping + again raises its quantity and keeps any note
+      const existing = state.cart.find((c) => c.menu_item_id === item.menu_item_id && !c.weight_grams)
       if (existing) {
         return {
           cart: state.cart.map((c) =>
-            c.menu_item_id === item.menu_item_id ? { ...c, quantity: c.quantity + item.quantity } : c,
+            c.line_id === existing.line_id ? { ...c, quantity: c.quantity + item.quantity } : c,
           ),
         }
       }
-      return { cart: [...state.cart, item] }
+      return { cart: [...state.cart, { ...item, line_id: newLineId() }] }
     })
   },
 
-  removeItem: (menuItemId) =>
-    set((state) => ({ cart: state.cart.filter((c) => c.menu_item_id !== menuItemId) })),
+  removeItem: (lineId) =>
+    set((state) => ({ cart: state.cart.filter((c) => c.line_id !== lineId) })),
 
-  changeQty: (menuItemId, delta) =>
+  changeQty: (lineId, delta) =>
     set((state) => ({
       cart: state.cart
-        .map((c) => (c.menu_item_id === menuItemId ? { ...c, quantity: c.quantity + delta } : c))
+        .map((c) => {
+          if (c.line_id !== lineId) return c
+          if (c.weight_grams) return delta < 0 ? { ...c, quantity: 0 } : c // weighed line: only remove
+          return { ...c, quantity: c.quantity + delta }
+        })
         .filter((c) => c.quantity > 0),
     })),
 
-  setNote: (menuItemId, note) =>
+  setNote: (lineId, note) =>
     set((state) => ({
-      cart: state.cart.map((c) =>
-        c.menu_item_id === menuItemId ? { ...c, special_instructions: note } : c,
-      ),
+      cart: state.cart.map((c) => (c.line_id === lineId ? { ...c, special_instructions: note } : c)),
+    })),
+
+  // Change the weight of a weighed line (amount = the new price for that weight)
+  setWeight: (lineId, grams, amount) =>
+    set((state) => ({
+      cart: state.cart.map((c) => (c.line_id === lineId ? { ...c, weight_grams: grams, price: amount } : c)),
     })),
 
   clear: () => set({ cart: [], tableId: null, tableNumber: null, notes: '' }),

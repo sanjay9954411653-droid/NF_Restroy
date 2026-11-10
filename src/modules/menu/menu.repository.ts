@@ -152,13 +152,14 @@ export class MenuRepository {
     isFeatured: boolean = false,
     priceUnit: 'PIECE' | 'KG' | '100G' = 'PIECE',
     skipKitchen: boolean = false,
-    readyInStock: boolean = true
+    readyInStock: boolean = true,
+    piecePrice: number | null = null
   ): Promise<MenuItem> {
     const result = await query(
-      `INSERT INTO menu_items (restaurant_id, category_id, name, description, price, prep_time_minutes, is_vegetarian, is_active, display_order, image_url, is_featured, price_unit, skip_kitchen, ready_in_stock)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-       RETURNING id, restaurant_id, category_id, name, description, price, prep_time_minutes, is_vegetarian, price_unit, image_url, is_featured, skip_kitchen, ready_in_stock, is_active, display_order, created_at, updated_at`,
-      [restaurantId, categoryId, name, description, price, prepTimeMinutes, isVegetarian, isActive, displayOrder, imageUrl, isFeatured, priceUnit, skipKitchen, readyInStock]
+      `INSERT INTO menu_items (restaurant_id, category_id, name, description, price, prep_time_minutes, is_vegetarian, is_active, display_order, image_url, is_featured, price_unit, skip_kitchen, ready_in_stock, piece_price)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+       RETURNING id, restaurant_id, category_id, name, description, price, prep_time_minutes, is_vegetarian, price_unit, piece_price, image_url, is_featured, skip_kitchen, ready_in_stock, is_active, display_order, created_at, updated_at`,
+      [restaurantId, categoryId, name, description, price, prepTimeMinutes, isVegetarian, isActive, displayOrder, imageUrl, isFeatured, priceUnit, skipKitchen, readyInStock, piecePrice]
     );
     const created: MenuItem = result.rows[0];
     created.category_ids = [created.category_id];
@@ -218,7 +219,7 @@ export class MenuRepository {
 
   async findMenuItemById(menuItemId: string): Promise<MenuItem | null> {
     const result = await query(
-      'SELECT id, restaurant_id, category_id, name, description, price, prep_time_minutes, is_vegetarian, price_unit, image_url, is_featured, skip_kitchen, ready_in_stock, is_active, display_order, created_at, updated_at FROM menu_items WHERE id = $1 LIMIT 1',
+      'SELECT id, restaurant_id, category_id, name, description, price, prep_time_minutes, is_vegetarian, price_unit, piece_price, image_url, is_featured, skip_kitchen, ready_in_stock, is_active, display_order, created_at, updated_at FROM menu_items WHERE id = $1 LIMIT 1',
       [menuItemId]
     );
     if (!result.rows[0]) return null;
@@ -227,7 +228,7 @@ export class MenuRepository {
 
   async findMenuItemsByRestaurantId(restaurantId: string): Promise<MenuItem[]> {
     const result = await query(
-      'SELECT id, restaurant_id, category_id, name, description, price, prep_time_minutes, is_vegetarian, price_unit, image_url, is_featured, skip_kitchen, ready_in_stock, is_active, display_order, created_at, updated_at FROM menu_items WHERE restaurant_id = $1 ORDER BY display_order ASC, name ASC',
+      'SELECT id, restaurant_id, category_id, name, description, price, prep_time_minutes, is_vegetarian, price_unit, piece_price, image_url, is_featured, skip_kitchen, ready_in_stock, is_active, display_order, created_at, updated_at FROM menu_items WHERE restaurant_id = $1 ORDER BY display_order ASC, name ASC',
       [restaurantId]
     );
     return (await this.attachCategoryIds(result.rows)) as MenuItem[];
@@ -245,7 +246,7 @@ export class MenuRepository {
 
   async findMenuItemsByCategoryId(categoryId: string): Promise<MenuItem[]> {
     const result = await query(
-      'SELECT id, restaurant_id, category_id, name, description, price, prep_time_minutes, is_vegetarian, price_unit, image_url, is_featured, skip_kitchen, ready_in_stock, is_active, display_order, created_at, updated_at FROM menu_items WHERE id IN (SELECT menu_item_id FROM menu_item_categories WHERE category_id = $1) ORDER BY display_order ASC, name ASC',
+      'SELECT id, restaurant_id, category_id, name, description, price, prep_time_minutes, is_vegetarian, price_unit, piece_price, image_url, is_featured, skip_kitchen, ready_in_stock, is_active, display_order, created_at, updated_at FROM menu_items WHERE id IN (SELECT menu_item_id FROM menu_item_categories WHERE category_id = $1) ORDER BY display_order ASC, name ASC',
       [categoryId]
     );
     return (await this.attachCategoryIds(result.rows)) as MenuItem[];
@@ -267,6 +268,7 @@ export class MenuRepository {
       skip_kitchen: boolean;
       ready_in_stock: boolean;
       price_unit: 'PIECE' | 'KG' | '100G';
+      piece_price: number | null;
     }>
   ): Promise<MenuItem | null> {
     const fields = [];
@@ -325,6 +327,10 @@ export class MenuRepository {
       fields.push(`price_unit = $${paramIndex++}`);
       values.push(updates.price_unit);
     }
+    if (updates.piece_price !== undefined) {
+      fields.push(`piece_price = $${paramIndex++}`);
+      values.push(updates.piece_price);
+    }
 
     if (fields.length === 0) {
       return this.findMenuItemById(menuItemId);
@@ -334,7 +340,7 @@ export class MenuRepository {
     values.push(menuItemId);
 
     const result = await query(
-      `UPDATE menu_items SET ${fields.join(', ')} WHERE id = $${paramIndex} RETURNING id, restaurant_id, category_id, name, description, price, prep_time_minutes, is_vegetarian, price_unit, image_url, is_featured, skip_kitchen, ready_in_stock, is_active, display_order, created_at, updated_at`,
+      `UPDATE menu_items SET ${fields.join(', ')} WHERE id = $${paramIndex} RETURNING id, restaurant_id, category_id, name, description, price, prep_time_minutes, is_vegetarian, price_unit, piece_price, image_url, is_featured, skip_kitchen, ready_in_stock, is_active, display_order, created_at, updated_at`,
       values
     );
 

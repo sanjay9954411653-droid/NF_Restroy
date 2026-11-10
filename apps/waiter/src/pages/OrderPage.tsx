@@ -16,6 +16,8 @@ import { ordersApi } from '../api/endpoints'
 import { getErrorMessage } from '../api/client'
 import type { MenuItem } from '../types'
 import { searchMenu } from '../lib/menuSearch'
+import WeightEntryModal from '../components/WeightEntryModal'
+import { isWeighed, priceUnitSuffix, weightedAmount, formatWeight, PriceUnit } from '../lib/weight'
 
 const formatCurrency = (n: number) =>
   new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 }).format(n)
@@ -30,14 +32,16 @@ const OrderPage: React.FC = () => {
   const isAddMode = !!orderId
 
   const { categories, items, fetchAll, setReadyStock } = useMenuStore()
-  const { cart, tableNumber, orderType, notes, addItem, changeQty, removeItem, setNote, setNotes, clear, total, count } = useCartStore()
+  const { cart, tableNumber, orderType, notes, addItem, changeQty, removeItem, setNote, setWeight, setNotes, clear, total, count } = useCartStore()
   const { submitOrder } = useOrderStore()
 
   const [activeCat, setActiveCat] = useState<string>('ALL')
   const [search, setSearch] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [reviewing, setReviewing] = useState(false)
-  const [noteOpen, setNoteOpen] = useState<string | null>(null)
+  const [noteOpen, setNoteOpen] = useState<string | null>(null)   // line_id of the line whose note is open
+  // Item waiting for its weight / piece count (lineId set = editing the weight of that cart line)
+  const [weightFor, setWeightFor] = useState<{ item: MenuItem; lineId?: string } | null>(null)
 
   useEffect(() => { fetchAll() }, [fetchAll])
 
@@ -63,15 +67,54 @@ const OrderPage: React.FC = () => {
   }
 
   const handleAdd = (item: MenuItem) => {
+    // Sold by kg / 100 g: ask for the weight (or number of pieces) first
+    if (isWeighed(item.price_unit)) {
+      setWeightFor({ item })
+      return
+    }
     addItem({ menu_item_id: item.id, name: item.name, price: item.price, quantity: 1 })
+  }
+
+  // Weight entered: add a new weighed line, or change the weight of an existing one
+  const confirmWeight = (grams: number) => {
+    if (!weightFor) return
+    const { item, lineId } = weightFor
+    const amount = weightedAmount(Number(item.price), item.price_unit as PriceUnit, grams)
+    if (lineId) {
+      setWeight(lineId, grams, amount)
+    } else {
+      addItem({
+        menu_item_id: item.id,
+        name: item.name,
+        price: amount,
+        quantity: 1,
+        weight_grams: grams,
+        price_unit: item.price_unit as 'KG' | '100G',
+        unit_rate: Number(item.price),
+      })
+    }
+    setWeightFor(null)
+  }
+
+  // Item sold by weight AND by piece: add it as a normal by-piece line (quantity x piece price)
+  const confirmPiece = (quantity: number) => {
+    if (!weightFor) return
+    const { item } = weightFor
+    const piecePrice = Number(item.piece_price)
+    if (!(piecePrice > 0)) return
+    addItem({ menu_item_id: item.id, name: item.name, price: piecePrice, quantity })
+    setWeightFor(null)
   }
 
   // Enter in the search box adds the top match when there is exactly one
   const handleSearchEnter = () => {
     if (filtered.length === 1) {
-      handleAdd(filtered[0])
-      toast.success(`Added ${filtered[0].name}`, { duration: 1200 })
-      setSearch('')
+      const only = filtered[0]
+      handleAdd(only)
+      if (!isWeighed(only.price_unit)) {
+        toast.success(`Added ${only.name}`, { duration: 1200 })
+        setSearch('')
+      }
     }
   }
 
@@ -100,6 +143,7 @@ const OrderPage: React.FC = () => {
             menu_item_id: c.menu_item_id,
             quantity: c.quantity,
             special_instructions: c.special_instructions,
+            weight_grams: c.weight_grams,
           })),
         })
 
@@ -179,7 +223,11 @@ const OrderPage: React.FC = () => {
       {/* Menu grid */}
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
         {filtered.map((item) => {
-          const inCart = cart.find((c) => c.menu_item_id === item.id)
+          const weighed = isWeighed(item.price_unit)
+          const itemLines = cart.filter((c) => c.menu_item_id === item.id)
+          // Normal items get a - qty + stepper; by-weight items always open the weight popup instead
+          const inCart = weighed ? undefined : itemLines[0]
+          const hasPiece = weighed && Number(item.piece_price) > 0
           return (
             <div key={item.id} className="card p-3 flex items-center gap-3">
               <div className="flex-1 min-w-0">
@@ -192,7 +240,13 @@ const OrderPage: React.FC = () => {
                   <p className="font-medium text-gray-900 text-sm truncate">{item.name}</p>
                 </div>
                 <div className="flex items-center gap-2 mt-0.5">
-                  <p className="text-indigo-600 font-bold text-sm">{formatCurrency(item.price)}</p>
+                  <p className="text-indigo-600 font-bold text-sm">
+                    {formatCurrency(item.price)}
+                    {weighed && <span className="text-xs font-medium"> {priceUnitSuffix(item.price_unit)}</span>}
+                  </p>
+                  {hasPiece && (
+                    <span className="text-xs text-gray-500">· {formatCurrency(Number(item.piece_price))} / piece</span>
+                  )}
                   {item.skip_kitchen && (
                     <button
                       type="button"
@@ -207,12 +261,17 @@ const OrderPage: React.FC = () => {
                     </button>
                   )}
                 </div>
+                {weighed && itemLines.length > 0 && (
+                  <p className="text-xs text-indigo-600 mt-0.5">
+                    In order: {itemLines.map((l) => (l.weight_grams ? formatWeight(l.weight_grams) : `${l.quantity} pc`)).join(' · ')}
+                  </p>
+                )}
               </div>
 
               {inCart ? (
                 <div className="flex items-center border border-gray-200 rounded-xl overflow-hidden shrink-0">
                   <button
-                    onClick={() => changeQty(item.id, -1)}
+                    onClick={() => changeQty(inCart.line_id, -1)}
                     className="px-3 py-2 hover:bg-gray-100 text-gray-600"
                   >
                     <MinusIcon className="w-4 h-4" />
@@ -269,19 +328,22 @@ const OrderPage: React.FC = () => {
 
             <div className="flex-1 overflow-y-auto px-4 py-2 divide-y divide-gray-100">
               {cart.map((line) => (
-                <div key={line.menu_item_id} className="py-3 flex items-center gap-3">
+                <div key={line.line_id} className="py-3 flex items-center gap-3">
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-gray-900 truncate">{line.name}</p>
                     <p className="text-xs text-gray-500">
-                      {formatCurrency(line.price)} × {line.quantity} = <span className="font-semibold text-gray-800">{formatCurrency(line.price * line.quantity)}</span>
+                      {line.weight_grams
+                        ? `${formatWeight(line.weight_grams)} × ${formatCurrency(line.unit_rate || 0)} ${priceUnitSuffix(line.price_unit)}`
+                        : `${formatCurrency(line.price)} × ${line.quantity}`}
+                      {' = '}<span className="font-semibold text-gray-800">{formatCurrency(line.price * line.quantity)}</span>
                     </p>
-                    {noteOpen === line.menu_item_id ? (
+                    {noteOpen === line.line_id ? (
                       <div className="mt-1.5 space-y-1.5">
                         <input
                           type="text"
                           autoFocus
                           value={line.special_instructions || ''}
-                          onChange={(e) => setNote(line.menu_item_id, e.target.value)}
+                          onChange={(e) => setNote(line.line_id, e.target.value)}
                           onKeyDown={(e) => { if (e.key === 'Enter') setNoteOpen(null) }}
                           placeholder="e.g. less spicy, no onion"
                           className="input text-xs py-1.5"
@@ -293,7 +355,7 @@ const OrderPage: React.FC = () => {
                               type="button"
                               onClick={() => {
                                 const cur = line.special_instructions || ''
-                                if (!cur.toLowerCase().includes(q.toLowerCase())) setNote(line.menu_item_id, cur ? `${cur}, ${q}` : q)
+                                if (!cur.toLowerCase().includes(q.toLowerCase())) setNote(line.line_id, cur ? `${cur}, ${q}` : q)
                               }}
                               className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 text-[11px]"
                             >
@@ -308,23 +370,36 @@ const OrderPage: React.FC = () => {
                     ) : (
                       <button
                         type="button"
-                        onClick={() => setNoteOpen(line.menu_item_id)}
+                        onClick={() => setNoteOpen(line.line_id)}
                         className={`text-xs mt-0.5 ${line.special_instructions ? 'text-amber-600' : 'text-indigo-600'}`}
                       >
                         {line.special_instructions ? `Note: ${line.special_instructions} · edit` : '+ Add note'}
                       </button>
                     )}
                   </div>
-                  <div className="flex items-center border border-gray-200 rounded-xl overflow-hidden shrink-0">
-                    <button onClick={() => changeQty(line.menu_item_id, -1)} className="px-2.5 py-1.5 text-gray-600">
-                      <MinusIcon className="w-4 h-4" />
+                  {line.weight_grams ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const item = items.find((i) => i.id === line.menu_item_id)
+                        if (item) setWeightFor({ item, lineId: line.line_id })
+                      }}
+                      className="px-3 py-1.5 border border-gray-200 rounded-xl text-xs font-medium text-indigo-600 shrink-0"
+                    >
+                      Edit weight
                     </button>
-                    <span className="px-2 font-bold text-sm min-w-[24px] text-center">{line.quantity}</span>
-                    <button onClick={() => changeQty(line.menu_item_id, 1)} className="px-2.5 py-1.5 text-gray-600">
-                      <PlusIcon className="w-4 h-4" />
-                    </button>
-                  </div>
-                  <button onClick={() => removeItem(line.menu_item_id)} className="p-1.5 text-red-500" aria-label={`Remove ${line.name}`}>
+                  ) : (
+                    <div className="flex items-center border border-gray-200 rounded-xl overflow-hidden shrink-0">
+                      <button onClick={() => changeQty(line.line_id, -1)} className="px-2.5 py-1.5 text-gray-600">
+                        <MinusIcon className="w-4 h-4" />
+                      </button>
+                      <span className="px-2 font-bold text-sm min-w-[24px] text-center">{line.quantity}</span>
+                      <button onClick={() => changeQty(line.line_id, 1)} className="px-2.5 py-1.5 text-gray-600">
+                        <PlusIcon className="w-4 h-4" />
+                      </button>
+                    </div>
+                  )}
+                  <button onClick={() => removeItem(line.line_id)} className="p-1.5 text-red-500" aria-label={`Remove ${line.name}`}>
                     <TrashIcon className="w-4 h-4" />
                   </button>
                 </div>
@@ -366,6 +441,20 @@ const OrderPage: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Weight / pieces popup for items sold by kg or 100 g */}
+      {weightFor && (
+        <WeightEntryModal
+          itemName={weightFor.item.name}
+          price={Number(weightFor.item.price)}
+          unit={weightFor.item.price_unit as PriceUnit}
+          initialGrams={weightFor.lineId ? cart.find((c) => c.line_id === weightFor.lineId)?.weight_grams : undefined}
+          piecePrice={!weightFor.lineId && Number(weightFor.item.piece_price) > 0 ? Number(weightFor.item.piece_price) : undefined}
+          onConfirmPiece={confirmPiece}
+          onConfirm={confirmWeight}
+          onClose={() => setWeightFor(null)}
+        />
       )}
     </div>
   )

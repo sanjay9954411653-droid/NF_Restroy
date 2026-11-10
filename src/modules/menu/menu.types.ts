@@ -40,6 +40,7 @@ export const CreateMenuItemRequestSchema = z.object({
   is_active: z.boolean().default(true),
   display_order: z.number().int().min(0).default(0),
   price_unit: z.enum(['PIECE', 'KG', '100G']).default('PIECE'), // KG / 100G: price is per kg / per 100 g
+  piece_price: z.number().positive('Piece price must be greater than 0').nullable().optional(), // by-weight items only: price of ONE piece
   image_url: imageUrlSchema,
   is_featured: z.boolean().default(false),
   skip_kitchen: z.boolean().default(false), // ready-made item: goes straight to the waiter, not the kitchen
@@ -60,6 +61,7 @@ export const UpdateMenuItemRequestSchema = z.object({
   is_active: z.boolean().optional(),
   display_order: z.number().int().min(0).optional(),
   price_unit: z.enum(['PIECE', 'KG', '100G']).optional(),
+  piece_price: z.number().positive('Piece price must be greater than 0').nullable().optional(),
   image_url: imageUrlSchema,
   is_featured: z.boolean().optional(),
   skip_kitchen: z.boolean().optional(),
@@ -105,6 +107,7 @@ export interface MenuItem {
   prep_time_minutes: number;
   is_vegetarian: boolean;
   price_unit: 'PIECE' | 'KG' | '100G'; // KG / 100G: `price` is per kg / per 100 g
+  piece_price?: number | null; // by-weight items only: price of ONE piece (null = weight only)
   image_url?: string | null;
   is_featured: boolean;
   skip_kitchen: boolean;

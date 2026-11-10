@@ -124,7 +124,7 @@ export class OrganizationRepository {
     const statsResult = await query(
       `SELECT
          (SELECT COALESCE(SUM(p.amount), 0) FROM payments p
-           WHERE p.restaurant_id IN (${placeholders}) AND p.status = 'PAID')::numeric as total_revenue,
+           WHERE p.restaurant_id IN (${placeholders}) AND p.is_test = FALSE AND p.status = 'PAID')::numeric as total_revenue,
          COALESCE(COUNT(*), 0)::bigint as total_orders
        FROM orders
        WHERE restaurant_id IN (${placeholders})
@@ -138,7 +138,7 @@ export class OrganizationRepository {
       `SELECT
          r.id, r.name, r.slug,
          (SELECT COALESCE(SUM(p.amount), 0) FROM payments p
-           WHERE p.restaurant_id = r.id AND p.status = 'PAID')::numeric as revenue,
+           WHERE p.restaurant_id = r.id AND p.is_test = FALSE AND p.status = 'PAID')::numeric as revenue,
          COALESCE(COUNT(o.id), 0)::bigint as orders
        FROM restaurants r
        LEFT JOIN orders o ON o.restaurant_id = r.id

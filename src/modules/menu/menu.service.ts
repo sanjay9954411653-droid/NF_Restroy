@@ -122,7 +122,7 @@ export class MenuService {
   }
 
   async createMenuItem(restaurantId: string, payload: CreateMenuItemRequest): Promise<MenuItem> {
-    const { name, description, price, prep_time_minutes, is_vegetarian, is_active, display_order, image_url, is_featured, price_unit, skip_kitchen, ready_in_stock } = payload;
+    const { name, description, price, prep_time_minutes, is_vegetarian, is_active, display_order, image_url, is_featured, price_unit, skip_kitchen, ready_in_stock, piece_price } = payload;
     const validatedName = this.validateMenuItemName(name);
 
     const categoryIds = await this.resolveCategoryIds(
@@ -148,7 +148,9 @@ export class MenuService {
       is_featured ?? false,
       price_unit ?? 'PIECE',
       skip_kitchen ?? false,
-      ready_in_stock ?? true
+      ready_in_stock ?? true,
+      // A piece price only makes sense for by-weight items
+      (price_unit ?? 'PIECE') === 'PIECE' ? null : (piece_price ?? null)
     );
     await menuRepository.setItemCategories(created.id, restaurantId, categoryIds);
     return this.getMenuItem(created.id);
@@ -219,6 +221,11 @@ export class MenuService {
     }
     if (payload.price_unit !== undefined) {
       updates.price_unit = payload.price_unit;
+      // Switching back to "per piece" clears the extra piece price
+      if (payload.price_unit === 'PIECE') updates.piece_price = null;
+    }
+    if (payload.piece_price !== undefined && payload.price_unit !== 'PIECE') {
+      updates.piece_price = payload.piece_price;
     }
 
     const updated = await menuRepository.updateMenuItem(menuItemId, updates);
