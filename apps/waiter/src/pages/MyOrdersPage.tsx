@@ -138,7 +138,7 @@ const PaymentSheet: React.FC<PaymentSheetProps> = ({ order, onClose, onPaid }) =
 
   const validateLine = (line: PaymentLine) => {
     if (line.amount <= 0) {
-      toast.error('Each split amount must be greater than ₹0')
+      toast.error('Each part amount must be greater than ₹0')
       return false
     }
     return true
@@ -158,11 +158,11 @@ const PaymentSheet: React.FC<PaymentSheetProps> = ({ order, onClose, onPaid }) =
       }
     } else {
       if (splits.length < 2) {
-        toast.error('Add at least two payments for split payment')
+        toast.error('Add at least two payments for part payment')
         return
       }
       if (Math.abs(splitTotal - total) > 0.01) {
-        toast.error(`Split total must equal ${formatCurrency(total)}. Remaining: ${formatCurrency(Math.max(0, total - splitTotal))}`)
+        toast.error(`Part total must equal ${formatCurrency(total)}. Remaining: ${formatCurrency(Math.max(0, total - splitTotal))}`)
         return
       }
       if (!splits.every(validateLine)) return
@@ -193,7 +193,7 @@ const PaymentSheet: React.FC<PaymentSheetProps> = ({ order, onClose, onPaid }) =
         }
       }
 
-      toast.success(mode === 'split' ? 'Split payment recorded ✓' : 'Payment recorded ✓')
+      toast.success(mode === 'split' ? 'Part payment recorded ✓' : 'Payment recorded ✓')
       onPaid()
     } catch (err: any) {
       toast.error(err?.response?.data?.error?.message || 'Payment failed')
@@ -251,7 +251,7 @@ const PaymentSheet: React.FC<PaymentSheetProps> = ({ order, onClose, onPaid }) =
               mode === 'split' ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-500'
             }`}
           >
-            Split Payment
+            Part Payment
           </button>
         </div>
 
@@ -322,7 +322,7 @@ const PaymentSheet: React.FC<PaymentSheetProps> = ({ order, onClose, onPaid }) =
               Math.abs(splitTotal - total) <= 0.01 ? 'bg-emerald-50' : 'bg-amber-50'
             }`}>
               <div>
-                <p className="text-xs text-gray-500">Split total</p>
+                <p className="text-xs text-gray-500">Part total</p>
                 <p className="text-lg font-bold text-gray-900">{formatCurrency(splitTotal)}</p>
               </div>
               <div className="text-right">
@@ -415,7 +415,7 @@ const PaymentSheet: React.FC<PaymentSheetProps> = ({ order, onClose, onPaid }) =
           {saving
             ? 'Recording…'
             : mode === 'split'
-              ? `Confirm Split — ${fmt2(splitTotal)}`
+              ? `Confirm Part Payment — ${fmt2(splitTotal)}`
               : `Confirm — ${fmt2(amount)}`}
         </button>
       </div>

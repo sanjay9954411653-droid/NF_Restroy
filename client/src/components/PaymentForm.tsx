@@ -305,7 +305,7 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
 
     if (splitOverpaid > 0) {
       throw new Error(
-        `Split payment exceeds balance by ${formatCurrency(
+        `Part payment exceeds balance by ${formatCurrency(
           splitOverpaid
         )}`
       )
@@ -354,7 +354,7 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
     }
 
     toast.success(
-      'Split payment completed successfully'
+      'Part payment completed successfully'
     )
   }
 
@@ -402,7 +402,7 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
       onClose={onClose}
       title={
         splitMode
-          ? 'Split Payment'
+          ? 'Part Payment'
           : 'Record Payment'
       }
       size="sm"
@@ -423,7 +423,7 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
             }
           >
             {splitMode
-              ? 'Complete Split Payment'
+              ? 'Complete Part Payment'
               : 'Record Payment'}
           </Button>
 
@@ -574,7 +574,7 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
                     : 'text-slate-500'
                 }`}
               >
-                Split Payment
+                Part Payment
               </button>
             </div>
 
@@ -709,7 +709,7 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
 
                   <div className="flex justify-between text-sm mt-1">
                     <span className="text-slate-600">
-                      Split total
+                      Part total
                     </span>
 
                     <span className="font-semibold">
@@ -893,7 +893,7 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
                     0 && (
                     <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-center">
                       <p className="text-emerald-700 font-semibold text-sm">
-                        ✓ Split payment
+                        ✓ Part payment
                         is ready
                       </p>
 
@@ -916,7 +916,7 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
 
                     <p className="text-red-600 text-xs mt-1">
                       Reduce the
-                      split amount
+                      part amount
                       by{' '}
                       {formatCurrency(
                         splitOverpaid
