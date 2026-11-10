@@ -180,6 +180,17 @@ export class OrdersController {
     }
   }
 
+  async kotReprint(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const restaurantId = req.user?.restaurantId;
+      if (!restaurantId) throw new Error('User not associated with a restaurant');
+      await assertOrderAccess(req.user, req.params.id);
+      res.json(successResponse({ kot: await printingService.reprintKotForDevice(req.params.id, restaurantId) }));
+    } catch (error) {
+      next(error);
+    }
+  }
+
   async kotRelease(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
     try {
       const restaurantId = req.user?.restaurantId;

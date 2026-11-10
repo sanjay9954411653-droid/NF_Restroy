@@ -94,6 +94,55 @@ export class PrintingService {
     };
   }
 
+  /**
+   * Build a read-only copy of items that have already been sent to the kitchen.
+   * Unlike claimKotForDevice, this never changes kot_printed_at, so reprinting
+   * cannot consume or interfere with the automatic/new-item printing queue.
+   */
+  async reprintKotForDevice(orderId: string, restaurantId: string) {
+    const order = await ordersRepository.findByIdWithDetails(orderId);
+    if (!order || order.restaurant_id !== restaurantId) throw new NotFoundError('Order not found');
+
+    const all = ((order as any).order_items || []) as any[];
+    const previouslyPrinted = all.filter(
+      (it) => it.status !== 'CANCELLED' && Boolean(it.kot_printed_at) && !it.skip_kitchen,
+    );
+    if (previouslyPrinted.length === 0) return null;
+
+    const restaurant = await restaurantsRepository.findById(restaurantId);
+    const byRound = new Map<number, any[]>();
+    for (const item of previouslyPrinted) {
+      const round = Number(item.round) || 1;
+      byRound.set(round, [...(byRound.get(round) || []), item]);
+    }
+
+    const rounds = [...byRound.entries()]
+      .sort((a, b) => a[0] - b[0])
+      .map(([round, items]) => ({
+        round,
+        item_ids: items.map((item) => item.id as string),
+        items: items.map((item): KotItem => ({
+          name: item.menu_item_name || 'Item',
+          quantity: item.quantity,
+          weight_grams: item.weight_grams ?? null,
+          special_instructions: item.special_instructions ?? null,
+          modifiers: (item.modifiers || []).map((modifier: any) => modifier.modifier_option_name),
+        })),
+      }));
+
+    return {
+      restaurant_name: restaurant?.name || 'Kitchen',
+      order_number: order.order_number,
+      table_number: (order as any).table?.table_number ?? null,
+      order_type: order.order_type,
+      order_source: order.order_source,
+      guest_label: (order as any).guest_label ?? null,
+      special_instructions: order.special_instructions ?? null,
+      created_at: new Date(order.created_at).toISOString(),
+      rounds,
+    };
+  }
+
   /** For a device with its own WiFi printer: claim the order's unprinted items and return them to print. */
   async claimKotForDevice(orderId: string, restaurantId: string) {
     const order = await ordersRepository.findById(orderId);

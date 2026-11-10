@@ -13,7 +13,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { PlusIcon, CurrencyDollarIcon, XMarkIcon, CheckCircleIcon } from '@heroicons/react/24/outline'
+import { PlusIcon, CurrencyDollarIcon, XMarkIcon, CheckCircleIcon, PrinterIcon, ArrowPathIcon } from '@heroicons/react/24/outline'
 import { useOrderStore } from '../store/useOrderStore'
 import { ordersApi, paymentsApi, PaymentMethod } from '../api/endpoints'
 import { formatDistanceToNow } from 'date-fns'
@@ -21,6 +21,7 @@ import type { Order, OrderStatus } from '../types'
 import { getReadyRounds, isFullyServed, orderItemsOf, isIncomingPending, SOURCE_LABEL } from '../lib/orderRounds'
 import { usePayable } from '../lib/usePayable'
 import CancelItemsSheet from '../components/CancelItemsSheet'
+import { printKotForOrder, reprintKotForOrder } from '../lib/kotPrinter'
 
 const formatCurrency = (n: number) =>
   new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 }).format(n)
@@ -433,8 +434,53 @@ const MyOrdersPage: React.FC = () => {
   const [readyKey, setReadyKey] = useState<string | null>(null)       // round being saved
   const [decidingId, setDecidingId] = useState<string | null>(null)
   const [confirmKey, setConfirmKey] = useState<string | null>(null)   // round awaiting a second tap
+  const [kotBusyKey, setKotBusyKey] = useState<string | null>(null)
 
   useEffect(() => { fetchOrders() }, [fetchOrders])
+
+  const handleKotAction = async (order: Order, action: 'print' | 'reprint') => {
+    const key = `${order.id}-${action}`
+    if (kotBusyKey) return
+    setKotBusyKey(key)
+    try {
+      if (action === 'print') {
+        const count = await printKotForOrder(order.id)
+        if (count === 0) toast('No new KOT items waiting to print.')
+      } else {
+        await reprintKotForOrder(order.id)
+      }
+    } finally {
+      setKotBusyKey(null)
+    }
+  }
+
+  const kotActions = (order: Order) => {
+    const kitchenItems = orderItemsOf(order).filter((item) => !item.skip_kitchen)
+    const hasUnprintedItems = kitchenItems.some((item) => !item.kot_printed_at)
+    const hasPrintedItems = kitchenItems.some((item) => !!item.kot_printed_at)
+    return (
+      <div className="grid grid-cols-2 gap-2">
+        <button
+          onClick={() => void handleKotAction(order, 'print')}
+          disabled={kotBusyKey !== null || order.status === 'READY' || !hasUnprintedItems}
+          className="btn-secondary flex items-center justify-center gap-1.5 py-2.5 text-sm disabled:opacity-50"
+          title={hasUnprintedItems ? 'Print items not yet sent to the kitchen' : 'No new KOT items waiting'}
+        >
+          <PrinterIcon className="w-4 h-4" />
+          {kotBusyKey === `${order.id}-print` ? 'Printing…' : 'Print KOT'}
+        </button>
+        <button
+          onClick={() => void handleKotAction(order, 'reprint')}
+          disabled={kotBusyKey !== null || !hasPrintedItems}
+          className="btn-secondary flex items-center justify-center gap-1.5 py-2.5 text-sm disabled:opacity-50"
+          title={hasPrintedItems ? 'Print the KOT again' : 'No previously printed KOT'}
+        >
+          <ArrowPathIcon className="w-4 h-4" />
+          {kotBusyKey === `${order.id}-reprint` ? 'Reprinting…' : 'Reprint KOT'}
+        </button>
+      </div>
+    )
+  }
 
   const incomingOrders = orders.filter(isIncomingPending)
   const kitchenOrders = orders.filter(
@@ -692,6 +738,7 @@ const MyOrdersPage: React.FC = () => {
                       <span className="text-gray-500">{itemCount} item{itemCount !== 1 ? 's' : ''}</span>
                       <span className="font-bold text-gray-900 text-lg">{formatCurrency(payable(Number(order.total_amount)))}</span>
                     </div>
+                    {kotActions(order)}
                     <div className="flex gap-2">
                       <button
                         onClick={() => setPayingOrder(order)}
@@ -784,6 +831,7 @@ const MyOrdersPage: React.FC = () => {
                         </button>
                       )
                     })}
+                    {kotActions(order)}
                     <div className="flex gap-2">
                       <button
                         onClick={() => navigate(`/order/add/${order.id}?table=${order.table?.table_number || ''}`)}

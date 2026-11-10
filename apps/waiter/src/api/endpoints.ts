@@ -105,6 +105,8 @@ export const ordersApi = {
     api.get<{ success: boolean; data: { order_ids: string[] } }>('/orders/kot-pending'),
   kotClaim: (id: string) =>
     api.post<{ success: boolean; data: { kot: KotTicketData | null } }>(`/orders/${id}/kot-claim`),
+  kotReprint: (id: string) =>
+    api.post<{ success: boolean; data: { kot: KotTicketData | null } }>(`/orders/${id}/kot-reprint`),
   kotRelease: (id: string, item_ids: string[]) =>
     api.post(`/orders/${id}/kot-release`, { item_ids }),
 

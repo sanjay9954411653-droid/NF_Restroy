@@ -221,6 +221,29 @@ export function printKotForOrder(orderId: string): Promise<number> {
   return job
 }
 
+/** Reprint only items that were previously marked as sent to the kitchen. This is read-only on the server. */
+export function reprintKotForOrder(orderId: string): Promise<number> {
+  if (inFlight.has(orderId)) return Promise.resolve(0)
+  inFlight.add(orderId)
+  const job = queue.then(async () => {
+    const prefs = getKotPrefs()
+    const res = await ordersApi.kotReprint(orderId)
+    const kot = res.data.data.kot
+    if (!kot) {
+      toast('No previously printed KOT items found for this order.')
+      return 0
+    }
+    for (const round of kot.rounds) await sendToPrinter(buildKotBytes(kot, round, prefs), prefs)
+    toast.success(`KOT reprinted — ${kot.order_number}`, { icon: '🖨️', duration: 2500 })
+    return kot.rounds.length
+  }).catch((err: any) => {
+    errorToast(`Couldn't reprint KOT: ${err?.response?.data?.error?.message || err?.message || 'printer error'}`)
+    return 0
+  }).finally(() => inFlight.delete(orderId))
+  queue = job
+  return job
+}
+
 /** Called right after THIS waiter places an order / adds items. */
 export function autoPrintAfterOrder(orderId: string | undefined | null): void {
   const prefs = getKotPrefs()
