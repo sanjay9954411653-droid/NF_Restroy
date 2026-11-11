@@ -266,6 +266,30 @@ const Menu: React.FC = () => {
       .catch(() => setOrderingEnabled(null))
   }, [])
 
+  const [menuAccordion, setMenuAccordion] = useState<boolean | null>(null)
+  const [accordionBusy, setAccordionBusy] = useState(false)
+
+  useEffect(() => {
+    api.get('/restaurants/me')
+      .then((res) => setMenuAccordion(res.data.data.features?.menu_accordion === true))
+      .catch(() => setMenuAccordion(null))
+  }, [])
+
+  const handleToggleAccordion = async () => {
+    if (menuAccordion === null || accordionBusy) return
+    const next = !menuAccordion
+    setAccordionBusy(true)
+    try {
+      await api.put('/restaurants/me', { features: { menu_accordion: next } })
+      setMenuAccordion(next)
+      toast.success(next ? 'Customer menu now shows collapsible categories' : 'Customer menu now shows the normal list')
+    } catch (err) {
+      toast.error(getErrorMessage(err))
+    } finally {
+      setAccordionBusy(false)
+    }
+  }
+
   const handleToggleOrdering = async () => {
     if (orderingEnabled === null || orderingBusy) return
     const next = !orderingEnabled
@@ -482,6 +506,23 @@ const Menu: React.FC = () => {
               </p>
             </div>
             <Switch on={orderingEnabled} disabled={orderingBusy} onClick={handleToggleOrdering} label="Customer ordering on/off" />
+          </div>
+        </Card>
+      )}
+
+      {/* Collapsible categories on the customer menu (optional) */}
+      {menuAccordion !== null && (
+        <Card padding="sm">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="font-semibold text-gray-900 text-sm">Collapsible categories (customer menu)</p>
+              <p className="text-xs text-gray-500">
+                {menuAccordion
+                  ? 'ON: customers see numbered categories and tap one to open its items.'
+                  : 'OFF: customers see every category with all its items listed.'}
+              </p>
+            </div>
+            <Switch on={menuAccordion} disabled={accordionBusy} onClick={handleToggleAccordion} label="Collapsible categories on/off" />
           </div>
         </Card>
       )}

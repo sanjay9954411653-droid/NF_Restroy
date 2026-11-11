@@ -36,6 +36,7 @@ export const UpdateRestaurantRequestSchema = z.object({
     zomato:          z.boolean().optional(),
     payments:        z.boolean().optional(),
     waiter_app:      z.boolean().optional(),
+    menu_accordion:  z.boolean().optional(),
   }).optional(),
   // ── Branding / public website fields ────────────────────────────────────────
   logo_url:          z.string().max(2048).nullable().optional(),

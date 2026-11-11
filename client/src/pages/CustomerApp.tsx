@@ -8,7 +8,7 @@
  * URL (scanned table QR): /customer?slug=demo-kitchen&t=<qr_token>
  */
 
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import axios from 'axios'
 import { MenuItem, MenuCategory } from '../types/menu'
@@ -29,6 +29,7 @@ import {
   SparklesIcon,
   ArrowUpIcon,
   Bars3Icon,
+  ChevronDownIcon,
 } from '@heroicons/react/24/outline'
 import { calcBill, normalizeBilling, LEGACY_BILLING, type BillingSettings } from '../lib/billing'
 import {
@@ -172,6 +173,9 @@ const CustomerApp: React.FC = () => {
     logo_url: '', hero_image_url: '', tagline: '', accent_color: '',
   })
   const [showTop, setShowTop] = useState(false)
+  const [menuAccordion, setMenuAccordion] = useState(false)
+  const [openSec, setOpenSec] = useState<string | null>(null)
+  const searchRef = useRef<HTMLInputElement>(null)
   const [qrMode, setQrMode] = useState<QRMode>('restaurant')
   const [orderingEnabled, setOrderingEnabled] = useState(true)
   const [categories, setCategories] = useState<MenuCategory[]>([])
@@ -271,6 +275,7 @@ const CustomerApp: React.FC = () => {
         })
         setQrMode(data.restaurant.qr_mode || 'restaurant')
         setOrderingEnabled(data.restaurant.ordering_enabled !== false)
+        setMenuAccordion(data.restaurant.menu_accordion === true)
         setBilling(normalizeBilling(data.restaurant.billing))
         setCategories(data.categories || [])
         setItems(data.items || [])
@@ -1257,6 +1262,7 @@ const CustomerApp: React.FC = () => {
         <div className="relative">
           <MagnifyingGlassIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
           <input
+            ref={searchRef}
             type="text"
             placeholder="Search dishes…"
             value={search}
@@ -1332,9 +1338,15 @@ const CustomerApp: React.FC = () => {
           {[{ id: 'ALL', name: 'All' }, ...categories.map((c) => ({ id: c.id, name: c.name }))].map((cat) => (
             <button
               key={cat.id}
-              onClick={() => setSelectedCategory(cat.id)}
+              onClick={() => {
+                if (!menuAccordion) { setSelectedCategory(cat.id); return }
+                // Collapsible layout: open that category and jump to it
+                setOpenSec(cat.id === 'ALL' ? null : cat.id)
+                if (cat.id === 'ALL') { window.scrollTo({ top: 0, behavior: 'smooth' }); return }
+                setTimeout(() => document.getElementById(`sec-${cat.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60)
+              }}
               className={`px-4 py-1.5 text-xs font-semibold rounded-full whitespace-nowrap transition-colors ${
-                selectedCategory === cat.id
+                (menuAccordion ? (openSec ?? 'ALL') : selectedCategory) === cat.id
                   ? 'bg-[var(--accent)] text-white shadow-sm'
                   : 'bg-white border border-gray-200 text-gray-600'
               }`}
@@ -1399,9 +1411,39 @@ const CustomerApp: React.FC = () => {
         {filtered.length === 0 ? (
           <div className="text-center py-16 text-gray-400">No items found</div>
         ) : (
-          sections.map((sec) => (
+          menuAccordion && !search.trim() ? (
+            sections.map((sec, idx) => {
+              const open = openSec === sec.id
+              return (
+                <section key={sec.id} id={`sec-${sec.id}`} className="mb-3 scroll-mt-28">
+                  <button
+                    type="button"
+                    onClick={() => setOpenSec(open ? null : sec.id)}
+                    aria-expanded={open}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl border text-left shadow-sm transition-colors ${
+                      open
+                        ? 'bg-[color:color-mix(in_srgb,var(--accent)_8%,#ffffff)] border-[color:color-mix(in_srgb,var(--accent)_30%,#e5e7eb)]'
+                        : 'bg-white border-gray-100'
+                    }`}
+                  >
+                    <span className="w-7 h-7 shrink-0 rounded-full bg-[var(--accent)] text-white text-xs font-bold flex items-center justify-center">{idx + 1}</span>
+                    <span className="flex-1 min-w-0">
+                      <span className="block text-base font-bold text-[color:var(--accent)] truncate">{sec.name}</span>
+                      <span className="block text-xs text-gray-400">{sec.list.length} item{sec.list.length === 1 ? '' : 's'}</span>
+                    </span>
+                    <ChevronDownIcon className={`w-5 h-5 text-gray-500 transition-transform ${open ? 'rotate-180' : ''}`} />
+                  </button>
+                  {open && (
+                    <div className="mt-2 bg-white rounded-2xl border border-[color:color-mix(in_srgb,var(--accent)_12%,#f3f4f6)] shadow-sm divide-y divide-gray-100 overflow-hidden">
+                      {sec.list.map(renderRow)}
+                    </div>
+                  )}
+                </section>
+              )
+            })
+          ) : sections.map((sec) => (
             <section key={sec.id} className="mb-6">
-              {selectedCategory === 'ALL' && (
+              {(menuAccordion || selectedCategory === 'ALL') && (
                 <h2 className="text-lg font-bold text-gray-900 mb-2">{sec.name}</h2>
               )}
               <div className="bg-white rounded-2xl border border-[color:color-mix(in_srgb,var(--accent)_12%,#f3f4f6)] shadow-sm divide-y divide-gray-100 overflow-hidden">
@@ -1412,7 +1454,21 @@ const CustomerApp: React.FC = () => {
         )}
       </main>
 
-      {/* Back to top */}
+      {/* Search (jumps to the search box) + Back to top */}
+      {showTop && (
+        <button
+          onClick={() => {
+            window.scrollTo({ top: 0, behavior: 'smooth' })
+            setTimeout(() => searchRef.current?.focus(), 450)
+          }}
+          aria-label="Search dishes"
+          className={`fixed right-4 z-10 w-11 h-11 rounded-full bg-white shadow-lg border border-gray-200 flex items-center justify-center ${
+            cartCount > 0 && !cartOpen ? 'bottom-[9.25rem]' : 'bottom-[5.25rem]'
+          }`}
+        >
+          <MagnifyingGlassIcon className="w-5 h-5 text-[color:var(--accent)]" />
+        </button>
+      )}
       {showTop && (
         <button
           onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}

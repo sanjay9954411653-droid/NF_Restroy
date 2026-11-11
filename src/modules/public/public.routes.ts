@@ -39,7 +39,7 @@ async function getRestaurantBySlug(slug: string) {
             other_charges_percent::float8 AS other_charges_percent,
             extra_charges_amount::float8 AS extra_charges_amount,
             extra_charges_amount::float8 AS extra_charges_amount,
-            table_passcode_required, ordering_enabled
+            table_passcode_required, ordering_enabled, features
      FROM restaurants WHERE slug = $1 LIMIT 1`,
     [slug],
   );
@@ -146,6 +146,7 @@ router.get('/menu/:slug', async (req: Request, res: Response, next: NextFunction
           slug: restaurant.slug,
           qr_mode: restaurant.qr_mode || 'restaurant',
           ordering_enabled: restaurant.ordering_enabled !== false,
+          menu_accordion: restaurant.features?.menu_accordion === true,
           logo_url: restaurant.logo_url || null,
           hero_image_url: restaurant.hero_image_url || null,
           tagline: restaurant.tagline || null,
