@@ -94,7 +94,7 @@ export class AuthRepository {
 
   async storeRefreshToken(userId: string, tokenHash: string, expiresAt: Date): Promise<void> {
     await query(
-      `INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, $3)`,
+      `INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, $3) ON CONFLICT (token_hash) DO NOTHING`,
       [userId, tokenHash, expiresAt],
     );
   }

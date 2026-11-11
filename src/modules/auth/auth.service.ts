@@ -39,7 +39,7 @@ export class AuthService {
   }
 
   generateRefreshToken(payload: JWTPayload): string {
-    return jwt.sign(payload, JWT_REFRESH_SECRET, { expiresIn: JWT_REFRESH_EXPIRY as any, algorithm: 'HS256', issuer: JWT_ISSUER });
+    return jwt.sign(payload, JWT_REFRESH_SECRET, { expiresIn: JWT_REFRESH_EXPIRY as any, algorithm: 'HS256', issuer: JWT_ISSUER, jwtid: crypto.randomUUID() });
   }
 
   verifyToken(token: string): JWTPayload | null {
