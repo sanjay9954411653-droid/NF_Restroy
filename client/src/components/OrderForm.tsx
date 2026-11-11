@@ -512,9 +512,12 @@ const OrderForm: React.FC<OrderFormProps> = ({ order, initialTableId, onClose, o
                             <span className="text-xs text-gray-400">⏱ {item.prep_time_minutes}m</span>
                           </div>
                           <p className="text-base font-bold text-indigo-600 mt-2">
-                            {formatCurrency(item.price)}
+                            {isWeighed(item.price_unit) && Number(item.piece_price) > 0 ? formatCurrency(Number(item.piece_price)) : formatCurrency(item.price)}
+                            {isWeighed(item.price_unit) && Number(item.piece_price) > 0 && (
+                              <span className="text-xs font-medium text-gray-500"> / piece</span>
+                            )}
                             {isWeighed(item.price_unit) && (
-                              <span className="text-xs font-medium text-gray-500"> {priceUnitSuffix(item.price_unit)}</span>
+                              <span className="block text-xs font-medium text-gray-500">{Number(item.piece_price) > 0 ? `${formatCurrency(item.price)} ` : ''}{priceUnitSuffix(item.price_unit)}</span>
                             )}
                           </p>
                         </button>

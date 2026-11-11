@@ -1144,7 +1144,7 @@ const CustomerApp: React.FC = () => {
             <p className="text-xs text-gray-400 mt-0.5 line-clamp-2">{item.description}</p>
           )}
           <div className="flex items-center gap-2 mt-1">
-            <span className="font-bold text-[color:var(--accent)]">{formatCurrency(item.price)}{item.price_unit === 'KG' ? ' / kg' : item.price_unit === '100G' ? ' / 100 g' : ''}</span>
+            <span className="font-bold text-[color:var(--accent)]">{formatCurrency(item.price)}{item.price_unit === 'KG' ? ' / kg' : item.price_unit === '100G' ? ' / 100 g' : ''}{Number((item as any).piece_price) > 0 && <span className="text-xs font-medium text-gray-500"> · {formatCurrency(Number((item as any).piece_price))} / piece</span>}</span>
             <span className="text-xs text-gray-400">⏱ {item.prep_time_minutes}m</span>
           </div>
         </div>
@@ -1385,7 +1385,7 @@ const CustomerApp: React.FC = () => {
                       {item.is_vegetarian && vegDot}
                       <h3 className="font-semibold text-gray-900 text-sm truncate">{item.name}</h3>
                     </div>
-                    <p className="font-bold text-[color:var(--accent)] mt-1">{formatCurrency(item.price)}{item.price_unit === 'KG' ? ' / kg' : item.price_unit === '100G' ? ' / 100 g' : ''}</p>
+                    <p className="font-bold text-[color:var(--accent)] mt-1">{formatCurrency(item.price)}{item.price_unit === 'KG' ? ' / kg' : item.price_unit === '100G' ? ' / 100 g' : ''}{Number((item as any).piece_price) > 0 && <span className="text-xs font-medium text-gray-500"> · {formatCurrency(Number((item as any).piece_price))} / piece</span>}</p>
                   </div>
                 </div>
               ))}
