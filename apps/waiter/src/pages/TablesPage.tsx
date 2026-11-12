@@ -13,7 +13,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { useCartStore } from '../store/useCartStore'
+import { useCartStore, draftItemCount } from '../store/useCartStore'
 import { tablesApi } from '../api/endpoints'
 import { getErrorMessage } from '../api/client'
 import type { TableWithStatus } from '../types'
@@ -35,7 +35,8 @@ function occupancyOf(t: TableWithStatus): Occupancy {
 const TablesPage: React.FC = () => {
   const navigate = useNavigate()
   const payable = usePayable()
-  const { setTable, setOrderType, clear } = useCartStore()
+  const begin = useCartStore((st) => st.begin)
+  const drafts = useCartStore((st) => st.drafts)   // unsent items per table
   const [tables, setTables] = useState<TableWithStatus[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -69,10 +70,14 @@ const TablesPage: React.FC = () => {
     return ['A', 'B', 'C', 'D', 'E', 'F'].find((l) => !used.includes(l)) || 'G'
   }
 
+  // Unsent items waiting on a table: its own new-order draft + drafts to add to its placed orders
+  const draftCountOf = (t: TableWithStatus) =>
+    draftItemCount(drafts[`new:${t.id}`]) +
+    openOrdersOf(t).reduce((n, o) => n + draftItemCount(drafts[`add:${o.id}`]), 0)
+
   const startSeparateOrder = (table: TableWithStatus) => {
-    clear()
-    setTable(table.id, table.table_number)
-    setOrderType('DINE_IN')
+    // Opens this table's draft (keeps whatever was already added to it)
+    begin(`new:${table.id}`, { tableId: table.id, tableNumber: table.table_number, orderType: 'DINE_IN', guestLabel: nextGuestLabel(table) })
     navigate(`/order/new?table=${table.table_number}&guest=${nextGuestLabel(table)}`)
   }
 
@@ -82,17 +87,13 @@ const TablesPage: React.FC = () => {
       setPicker(table)
       return
     }
-    // Free — start a new dine-in order
-    clear()
-    setTable(table.id, table.table_number)
-    setOrderType('DINE_IN')
+    // Free — open its draft (new, or the one the waiter left earlier)
+    begin(`new:${table.id}`, { tableId: table.id, tableNumber: table.table_number, orderType: 'DINE_IN', guestLabel: null })
     navigate('/order/new')
   }
 
   const handlePickupOrder = () => {
-    clear()
-    setTable(null, null)
-    setOrderType('PARCEL')
+    begin('new:pickup', { tableId: null, tableNumber: null, orderType: 'PARCEL', guestLabel: null })
     navigate('/order/new')
   }
 
@@ -121,6 +122,9 @@ const TablesPage: React.FC = () => {
         <div>
           <p className="font-semibold text-gray-900">Pick-up</p>
           <p className="text-sm text-gray-500">No table — order to go</p>
+          {draftItemCount(drafts['new:pickup']) > 0 && (
+            <p className="text-xs font-semibold text-amber-600 mt-0.5">Draft · {draftItemCount(drafts['new:pickup'])} items not sent</p>
+          )}
         </div>
       </button>
       )}
@@ -164,6 +168,9 @@ const TablesPage: React.FC = () => {
                   <span className={`inline-block mt-1 px-2 py-0.5 rounded text-[10px] font-medium ${s.badge}`}>
                     {s.label}
                   </span>
+                  {draftCountOf(table) > 0 && (
+                    <p className="text-[10px] font-bold text-amber-600 mt-1">📝 Draft · {draftCountOf(table)}</p>
+                  )}
                   {table.active_order ? (
                     <p className="text-xs font-semibold text-gray-700 mt-1">
                       {openOrdersOf(table).length > 1
@@ -195,6 +202,9 @@ const TablesPage: React.FC = () => {
                 <span>
                   <span className="font-semibold text-gray-900">Guest {o.guest_label || 'A'}</span>
                   <span className="text-xs text-gray-500 ml-2">{o.item_count} items · {o.status}</span>
+                  {draftItemCount(drafts[`add:${o.id}`]) > 0 && (
+                    <span className="text-xs font-semibold text-amber-600 ml-2">📝 +{draftItemCount(drafts[`add:${o.id}`])} draft</span>
+                  )}
                 </span>
                 <span className="font-semibold text-gray-700">₹{payable(o.total_amount).toFixed(2)}</span>
               </button>
@@ -203,7 +213,7 @@ const TablesPage: React.FC = () => {
               onClick={() => { const t = picker; setPicker(null); startSeparateOrder(t) }}
               className="w-full p-3 rounded-xl bg-indigo-600 text-white font-semibold"
             >
-              + New separate order (Guest {nextGuestLabel(picker)})
+              + New separate order (Guest {nextGuestLabel(picker)}){draftItemCount(drafts[`new:${picker.id}`]) > 0 ? ` · 📝 ${draftItemCount(drafts[`new:${picker.id}`])} in draft` : ''}
             </button>
           </div>
         </div>

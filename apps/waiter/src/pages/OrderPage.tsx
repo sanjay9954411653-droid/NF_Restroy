@@ -30,8 +30,6 @@ const OrderPage: React.FC = () => {
   const guestLabel = searchParams.get('guest')
 
   const isAddMode = !!orderId
-  // The cart belongs to ONE table / order. Opening a different one starts with an empty cart.
-  const contextKey = isAddMode ? `add:${orderId}` : `new:${tableLabel || 'pickup'}:${guestLabel || ''}`
 
   const { categories, items, fetchAll, setReadyStock } = useMenuStore()
   const { cart, begin, tableNumber, orderType, notes, addItem, changeQty, removeItem, setNote, setWeight, setNotes, clear, total, count } = useCartStore()
@@ -170,16 +168,21 @@ const OrderPage: React.FC = () => {
 
   useEffect(() => { if (reviewing && cart.length === 0) setReviewing(false) }, [reviewing, cart.length])
 
-  // Runs before the screen is drawn, so items from another table never flash on screen
-  useLayoutEffect(() => { begin(contextKey) }, [begin, contextKey])
+  // Open the right draft before the screen is drawn: "Add items" has one draft per placed order;
+  // a new order's draft was already opened by the tables screen (the fallback covers a page refresh).
+  useLayoutEffect(() => {
+    if (isAddMode) { begin(`add:${orderId}`); return }
+    const open = useCartStore.getState().contextKey
+    if (!open || open.startsWith('add:')) begin(`new:${tableLabel || 'pickup'}`)
+  }, [begin, isAddMode, orderId, tableLabel])
 
-  // Cancel / Back: unsent items are discarded (after a quick confirmation if there are any)
+  // Back keeps the draft (items stay on this table until it is placed or discarded)
   const [discardOpen, setDiscardOpen] = useState(false)
-  const handleCancel = () => {
-    if (cart.length > 0) { setDiscardOpen(true); return }
-    clear()
+  const handleBack = () => {
+    if (cart.length > 0) toast.success('Saved as draft — not sent yet', { duration: 1500 })
     navigate(-1)
   }
+  // Discard removes this draft for good
   const discardAndLeave = () => {
     setDiscardOpen(false)
     clear()
@@ -194,6 +197,11 @@ const OrderPage: React.FC = () => {
           <div>
             <h1 className="font-bold text-gray-900">
               {isAddMode ? 'Add Items' : 'New Order'}
+              {cart.length > 0 && (
+                <span className="ml-2 px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 text-[10px] font-semibold align-middle">
+                  Draft · not sent
+                </span>
+              )}
             </h1>
             <p className="text-xs text-gray-500">
               {isAddMode
@@ -201,9 +209,16 @@ const OrderPage: React.FC = () => {
                 : tableNumber ? `Table ${tableNumber}${guestLabel ? ` · Guest ${guestLabel}` : ''}` : (orderType === 'PARCEL' ? 'Pick-up' : orderType)}
             </p>
           </div>
-          <button onClick={handleCancel} className="text-sm text-gray-500 hover:text-gray-700">
-            Cancel
-          </button>
+          <div className="flex items-center gap-4">
+            {cart.length > 0 && (
+              <button onClick={() => setDiscardOpen(true)} className="text-sm text-red-500 hover:text-red-600">
+                Discard
+              </button>
+            )}
+            <button onClick={handleBack} className="text-sm text-gray-500 hover:text-gray-700">
+              Back
+            </button>
+          </div>
         </div>
 
         {/* Search */}
@@ -466,9 +481,9 @@ const OrderPage: React.FC = () => {
         <div className="fixed inset-0 z-[80] flex items-end sm:items-center justify-center sm:p-4">
           <div className="absolute inset-0 bg-black/40" onClick={() => setDiscardOpen(false)} />
           <div className="relative bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl w-full max-w-sm p-5 pb-8 sm:pb-5">
-            <h3 className="font-bold text-gray-900">Discard this order?</h3>
+            <h3 className="font-bold text-gray-900">Discard this draft?</h3>
             <p className="text-sm text-gray-500 mt-1">
-              {cartCount} item{cartCount === 1 ? '' : 's'} not sent to the kitchen will be removed.
+              {cartCount} item{cartCount === 1 ? '' : 's'} on this table will be removed. They have not been sent to the kitchen.
             </p>
             <div className="flex gap-3 mt-4">
               <button

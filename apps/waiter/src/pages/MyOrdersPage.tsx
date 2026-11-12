@@ -20,6 +20,7 @@ import { formatDistanceToNow } from 'date-fns'
 import type { Order, OrderStatus } from '../types'
 import { getReadyRounds, isFullyServed, orderItemsOf, isIncomingPending, SOURCE_LABEL } from '../lib/orderRounds'
 import { usePayable } from '../lib/usePayable'
+import { useCartStore, draftItemCount } from '../store/useCartStore'
 import { formatWeight } from '../lib/weight'
 import CancelItemsSheet from '../components/CancelItemsSheet'
 import { printKotForOrder, reprintKotForOrder } from '../lib/kotPrinter'
@@ -426,6 +427,8 @@ const PaymentSheet: React.FC<PaymentSheetProps> = ({ order, onClose, onPaid }) =
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 const MyOrdersPage: React.FC = () => {
+  const drafts = useCartStore((st) => st.drafts)
+  const draftOf = (orderId: string) => draftItemCount(drafts[`add:${orderId}`])
   const payable = usePayable()
   const navigate = useNavigate()
   const { orders, queue, isLoading, fetchOrders, serve, markRoundReady, updateStatus } = useOrderStore()
@@ -754,7 +757,7 @@ const MyOrdersPage: React.FC = () => {
                         title="Add more items"
                       >
                         <PlusIcon className="w-4 h-4" />
-                        Add
+                        Add{draftOf(order.id) > 0 ? ` 📝${draftOf(order.id)}` : ''}
                       </button>
                       <button
                         onClick={() => setCancelOrder(order)}
@@ -840,7 +843,7 @@ const MyOrdersPage: React.FC = () => {
                         title="Add more items"
                       >
                         <PlusIcon className="w-4 h-4" />
-                        Add items
+                        Add items{draftOf(order.id) > 0 ? ` · 📝 ${draftOf(order.id)} in draft` : ''}
                       </button>
                       <button
                         onClick={() => setCancelOrder(order)}
