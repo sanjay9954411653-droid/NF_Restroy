@@ -3,6 +3,7 @@ import { persist } from 'zustand/middleware'
 import axios from 'axios'
 import { authApi } from '../api/endpoints'
 import { setToken, getRefreshToken } from '../api/client'
+import { useCartStore } from './useCartStore'
 import type { User } from '../types'
 
 interface AuthState {
@@ -44,6 +45,7 @@ export const useAuthStore = create<AuthState>()(
           try { await authApi.logout(refreshToken) } catch { /* best effort */ }
         }
         setToken(null, null)
+        useCartStore.getState().resetAll()   // drafts belong to the waiter who made them
         set({ user: null, token: null })
       },
 
