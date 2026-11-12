@@ -16,7 +16,9 @@ interface CartState {
   orderSource:  OrderSource
   notes:        string
   cart:         CartLine[]
+  contextKey:   string | null   // which table / order this cart belongs to
 
+  begin:        (contextKey: string) => void
   setTable:     (id: string | null, number: string | null) => void
   setOrderType: (type: OrderType) => void
   setNotes:     (notes: string) => void
@@ -41,6 +43,13 @@ export const useCartStore = create<CartState>()((set, get) => ({
   orderSource: 'WAITER',
   notes:       '',
   cart:        [],
+  contextKey:  null,
+
+  // Called when the order screen opens. A cart left over from a DIFFERENT table / order
+  // (waiter pressed back, or left the screen) is thrown away, so items can never end up
+  // on the wrong table.
+  begin: (contextKey) =>
+    set((state) => (state.contextKey === contextKey ? state : { cart: [], notes: '', contextKey })),
 
   setTable: (id, number) => set({ tableId: id, tableNumber: number }),
   setOrderType: (type) => set({ orderType: type }),
@@ -90,7 +99,7 @@ export const useCartStore = create<CartState>()((set, get) => ({
       cart: state.cart.map((c) => (c.line_id === lineId ? { ...c, weight_grams: grams, price: amount } : c)),
     })),
 
-  clear: () => set({ cart: [], tableId: null, tableNumber: null, notes: '' }),
+  clear: () => set({ cart: [], tableId: null, tableNumber: null, notes: '', contextKey: null }),
 
   total: () => get().cart.reduce((s, c) => s + c.price * c.quantity, 0),
   count: () => get().cart.reduce((s, c) => s + c.quantity, 0),
