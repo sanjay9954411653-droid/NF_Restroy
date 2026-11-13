@@ -147,6 +147,7 @@ router.get('/menu/:slug', async (req: Request, res: Response, next: NextFunction
           qr_mode: restaurant.qr_mode || 'restaurant',
           ordering_enabled: restaurant.ordering_enabled !== false,
           menu_accordion: restaurant.features?.menu_accordion === true,
+          show_diet_icons: restaurant.features?.show_diet_icons !== false,
           logo_url: restaurant.logo_url || null,
           hero_image_url: restaurant.hero_image_url || null,
           tagline: restaurant.tagline || null,
