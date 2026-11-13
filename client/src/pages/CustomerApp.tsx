@@ -174,6 +174,7 @@ const CustomerApp: React.FC = () => {
   })
   const [showTop, setShowTop] = useState(false)
   const [menuAccordion, setMenuAccordion] = useState(false)
+  const [showDietIcons, setShowDietIcons] = useState(true)
   const [openSec, setOpenSec] = useState<string | null>(null)
   const searchRef = useRef<HTMLInputElement>(null)
   const [qrMode, setQrMode] = useState<QRMode>('restaurant')
@@ -276,6 +277,7 @@ const CustomerApp: React.FC = () => {
         setQrMode(data.restaurant.qr_mode || 'restaurant')
         setOrderingEnabled(data.restaurant.ordering_enabled !== false)
         setMenuAccordion(data.restaurant.menu_accordion === true)
+        setShowDietIcons(data.restaurant.show_diet_icons !== false)
         setBilling(normalizeBilling(data.restaurant.billing))
         setCategories(data.categories || [])
         setItems(data.items || [])
@@ -1044,7 +1046,7 @@ const CustomerApp: React.FC = () => {
   // ── STEP 2: Menu ───────────────────────────────────────────────────────────
   const showFeatured = selectedCategory === 'ALL' && !search.trim() && featuredItems.length > 0
 
-  const vegDot = (
+  const vegDot = !showDietIcons ? null : (
     <span className="w-4 h-4 rounded-sm border-2 border-emerald-600 flex items-center justify-center shrink-0" title="Vegetarian">
       <span className="w-2 h-2 rounded-full bg-emerald-600" />
     </span>
@@ -1317,7 +1319,7 @@ const CustomerApp: React.FC = () => {
 
       {/* ── Category chips (stick to the top while scrolling) ─────────────── */}
       <div className="sticky top-0 z-20 mt-3 bg-white/90 backdrop-blur border-b border-[color:color-mix(in_srgb,var(--accent)_15%,#e5e7eb)]">
-        <div className="max-w-2xl mx-auto px-4 pt-2.5 flex gap-2">
+        <div className={`max-w-2xl mx-auto px-4 pt-2.5 flex gap-2 ${showDietIcons ? '' : 'hidden'}`}>
           {DIET_OPTIONS.map((opt) => (
             <button
               key={opt.value}
@@ -1717,7 +1719,7 @@ const CustomerApp: React.FC = () => {
               <div className="flex items-start gap-3">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    {modifierItem.is_vegetarian ? (
+                    {!showDietIcons ? null : modifierItem.is_vegetarian ? (
                       <span className="w-4 h-4 rounded-sm border-2 border-emerald-600 flex items-center justify-center shrink-0" title="Vegetarian">
                         <span className="w-2 h-2 rounded-full bg-emerald-600" />
                       </span>

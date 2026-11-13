@@ -275,6 +275,30 @@ const Menu: React.FC = () => {
       .catch(() => setMenuAccordion(null))
   }, [])
 
+  const [showDiet, setShowDiet] = useState<boolean | null>(null)
+  const [dietBusy, setDietBusy] = useState(false)
+
+  useEffect(() => {
+    api.get('/restaurants/me')
+      .then((res) => setShowDiet(res.data.data.features?.show_diet_icons !== false))
+      .catch(() => setShowDiet(null))
+  }, [])
+
+  const handleToggleDiet = async () => {
+    if (showDiet === null || dietBusy) return
+    const next = !showDiet
+    setDietBusy(true)
+    try {
+      await api.put('/restaurants/me', { features: { show_diet_icons: next } })
+      setShowDiet(next)
+      toast.success(next ? 'Veg / non-veg icons are shown on the customer menu' : 'Veg / non-veg icons are hidden on the customer menu')
+    } catch (err) {
+      toast.error(getErrorMessage(err))
+    } finally {
+      setDietBusy(false)
+    }
+  }
+
   const handleToggleAccordion = async () => {
     if (menuAccordion === null || accordionBusy) return
     const next = !menuAccordion
@@ -523,6 +547,23 @@ const Menu: React.FC = () => {
               </p>
             </div>
             <Switch on={menuAccordion} disabled={accordionBusy} onClick={handleToggleAccordion} label="Collapsible categories on/off" />
+          </div>
+        </Card>
+      )}
+
+      {/* Veg / non-veg icons on the customer menu (optional) */}
+      {showDiet !== null && (
+        <Card padding="sm">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="font-semibold text-gray-900 text-sm">Veg / non-veg icons (customer menu)</p>
+              <p className="text-xs text-gray-500">
+                {showDiet
+                  ? 'ON: customers see the green / red dots and the Veg / Non-veg filter.'
+                  : 'OFF: all veg and non-veg icons and the filter are hidden from customers.'}
+              </p>
+            </div>
+            <Switch on={showDiet} disabled={dietBusy} onClick={handleToggleDiet} label="Veg and non-veg icons on/off" />
           </div>
         </Card>
       )}
