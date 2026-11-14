@@ -132,7 +132,10 @@ const Tables: React.FC = () => {
   const fetchPickups = useCallback(async () => {
     try {
       const res = await api.get('/orders/pickups/active')
-      setPickups(res.data.data || [])
+      const list: PickupOrder[] = res.data.data || []
+      setPickups(list)
+      // A pick-up that was cancelled or finished disappears — close its drawer too
+      setPickupPanel((cur) => (cur && !list.some((p) => p.id === cur.id) ? null : cur))
     } catch { /* the tables still work if this fails */ }
   }, [])
 

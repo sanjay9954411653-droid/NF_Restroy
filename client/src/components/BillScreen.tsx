@@ -127,7 +127,7 @@ const BillScreen: React.FC<BillScreenProps> = ({ orderId, tableNumber, onClose, 
         const data = orderRes.data.data
         const ord = data?.order ?? data
         setOrder(ord)
-        setItems(ord?.items || ord?.order_items || data?.items || [])
+        setItems((ord?.items || ord?.order_items || data?.items || []).filter((i: any) => i.status !== 'CANCELLED'))
 
         const r = restRes.data.data
         setRestaurant({

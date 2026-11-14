@@ -128,7 +128,9 @@ export async function loadBillData(orderId: string, tableNumber?: string): Promi
   const [orderRes, ctx] = await Promise.all([api.get(`/orders/${orderId}`), loadBillingContext(orderId)])
   const data = orderRes.data.data
   const order: Order = data?.order ?? data
-  const items: OrderItem[] = (order as any)?.items || (order as any)?.order_items || data?.items || []
+  const items: OrderItem[] = ((order as any)?.items || (order as any)?.order_items || data?.items || []).filter(
+    (i: OrderItem) => i.status !== 'CANCELLED',
+  )
   return {
     order,
     items,

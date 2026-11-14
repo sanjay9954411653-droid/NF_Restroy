@@ -36,6 +36,9 @@ export interface OrderItem {
 
   status?: string;
 
+  /** When the waiter served this item (it can no longer be cancelled). */
+  served_at?: string | null;
+
   /** When this item was sent to the kitchen printer (null/undefined = not yet printed). */
   kot_printed_at?: string | null;
 

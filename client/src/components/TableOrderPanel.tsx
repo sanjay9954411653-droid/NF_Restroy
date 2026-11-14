@@ -21,6 +21,7 @@ import { formatCurrency, formatRelative } from '../lib/utils'
 import { formatWeight } from '../lib/weight'
 import Button from './Button'
 import Badge from './Badge'
+import CancelItemsSheet from './CancelItemsSheet'
 import { printKOT } from './PrintKOT'
 import { printReceipt } from './PrintReceipt'
 import { useGrandTotal } from '../lib/useBillTotal'
@@ -80,7 +81,10 @@ const TableOrderPanel: React.FC<TableOrderPanelProps> = ({
   onChanged,
 }) => {
   const [order, setOrder] = useState<Order | null>(null)
-  const [items, setItems] = useState<OrderItem[]>([])
+  const [allItems, setAllItems] = useState<OrderItem[]>([])
+  const [cancelOpen, setCancelOpen] = useState(false)
+  // Cancelled lines stay in the database (audit trail) but are not part of the bill, KOT or total
+  const items = allItems.filter((i) => i.status !== 'CANCELLED')
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const grandTotal = useGrandTotal(order, items)
@@ -93,7 +97,7 @@ const TableOrderPanel: React.FC<TableOrderPanelProps> = ({
       const data = res.data.data
       const ord = data?.order ?? data
       setOrder(ord)
-      setItems(ord?.items || ord?.order_items || data?.items || [])
+      setAllItems(ord?.items || ord?.order_items || data?.items || [])
     } catch (err) {
       toast.error(getErrorMessage(err))
     } finally {
@@ -285,10 +289,36 @@ const TableOrderPanel: React.FC<TableOrderPanelProps> = ({
                   </Button>
                 )}
               </div>
+
+              {/* Cancel items — only while the order is still open */}
+              {!['COMPLETED', 'CANCELLED'].includes(order.status) && items.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setCancelOpen(true)}
+                  className="w-full flex items-center justify-center gap-1.5 py-2 rounded-xl border border-red-200 text-sm font-medium text-red-600 hover:bg-red-50"
+                >
+                  <XMarkIcon className="w-4 h-4" /> Cancel items
+                </button>
+              )}
             </div>
           </>
         )}
       </div>
+
+      {cancelOpen && order && (
+        <CancelItemsSheet
+          orderId={order.id}
+          orderNumber={order.order_number}
+          title={`${kindLabel} ${tableNumber}`}
+          items={items}
+          onClose={() => setCancelOpen(false)}
+          onDone={async () => {
+            setCancelOpen(false)
+            await loadOrder()
+            onChanged()
+          }}
+        />
+      )}
     </div>
   )
 }
