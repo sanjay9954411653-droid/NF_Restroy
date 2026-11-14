@@ -14,7 +14,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { useCartStore, draftItemCount } from '../store/useCartStore'
-import { tablesApi, ordersApi } from '../api/endpoints'
+import { tablesApi } from '../api/endpoints'
 import { getErrorMessage } from '../api/client'
 import type { TableWithStatus, PickupOrder } from '../types'
 import { usePayable } from '../lib/usePayable'
@@ -54,7 +54,7 @@ const TablesPage: React.FC = () => {
 
   const fetchPickups = useCallback(async () => {
     try {
-      const res = await ordersApi.activePickups()
+      const res = await tablesApi.activePickups()
       setPickups(res.data.data || [])
     } catch { /* tables still work without it */ }
   }, [])
