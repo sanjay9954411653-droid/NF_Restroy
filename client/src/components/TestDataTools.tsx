@@ -10,13 +10,14 @@ import toast from 'react-hot-toast'
 import api, { getErrorMessage } from '../api'
 import { formatCurrency, formatDate } from '../lib/utils'
 
-type Mode = 'range' | 'before' | 'all' | 'test'
+type Mode = 'range' | 'before' | 'all' | 'test' | 'pick'
 type Extra = 'loyalty' | 'reviews' | 'reservations' | 'table_requests' | 'inventory' | 'print_jobs'
 
 const MODES: { key: Mode; label: string; hint: string }[] = [
   { key: 'range',  label: 'Date range',        hint: 'Orders placed between two dates' },
   { key: 'before', label: 'Before a date',     hint: 'Everything older than a date' },
   { key: 'test',   label: 'Demo-mode orders',  hint: 'Only orders placed while Demo mode was on' },
+  { key: 'pick',   label: 'Specific orders',   hint: 'Delete chosen orders by order number or id' },
   { key: 'all',    label: 'Everything',        hint: 'Every order of this restaurant' },
 ]
 
@@ -46,6 +47,7 @@ interface Preview {
   first_order_at: string | null
   last_order_at: string | null
   open_orders_skipped: number
+  not_found?: string[]
   extras: Record<string, number>
   sample: { id: string; order_number: string; status: string; order_type: string; total_amount: number; is_test: boolean; created_at: string }[]
 }
@@ -59,6 +61,8 @@ const TestDataTools: React.FC<{ restaurantId: string; restaurantName: string; de
   const [to, setTo] = useState(today())
   const [before, setBefore] = useState(today())
   const [includeOpen, setIncludeOpen] = useState(false)
+  const [refsText, setRefsText] = useState('')
+  const refs = refsText.split(/[\s,;]+/).map((s) => s.replace(/^#/, '').trim()).filter(Boolean)
   const [extras, setExtras] = useState<Extra[]>([])
   const [preview, setPreview] = useState<Preview | null>(null)
   const [confirmName, setConfirmName] = useState('')
@@ -69,12 +73,13 @@ const TestDataTools: React.FC<{ restaurantId: string; restaurantName: string; de
     mode,
     ...(mode === 'range' ? { from, to } : {}),
     ...(mode === 'before' ? { before } : {}),
+    ...(mode === 'pick' ? { order_refs: refs } : {}),
     include_open: includeOpen,
     include: extras,
-  }), [mode, from, to, before, includeOpen, extras])
+  }), [mode, from, to, before, includeOpen, extras, refsText])
 
   // Any change to the choices invalidates the preview, so a stale preview can never be confirmed
-  useEffect(() => { setPreview(null); setConfirmName('') }, [mode, from, to, before, includeOpen, extras])
+  useEffect(() => { setPreview(null); setConfirmName('') }, [mode, from, to, before, includeOpen, extras, refsText])
 
   const loadLog = useCallback(async () => {
     try {
@@ -194,10 +199,27 @@ const TestDataTools: React.FC<{ restaurantId: string; restaurantName: string; de
             {mode === 'before' && (
               <label className="block text-xs text-slate-600 mt-2">Orders placed before <input type="date" value={before} onChange={(e) => setBefore(e.target.value)} className="ml-1 rounded border border-slate-300 px-2 py-1" /></label>
             )}
+            {mode === 'pick' && (
+              <div className="mt-2">
+                <label className="block text-xs text-slate-600">
+                  Order numbers or ids (separate with space, comma or new line)
+                  <textarea
+                    value={refsText}
+                    onChange={(e) => setRefsText(e.target.value)}
+                    rows={3}
+                    placeholder="e.g. 1042, 1043 or a full order id"
+                    className="mt-1 block w-full rounded border border-slate-300 px-2 py-1.5 text-sm font-mono"
+                  />
+                </label>
+                <p className="text-[11px] text-slate-400 mt-1">{refs.length} entered · open orders are deleted too when you pick them here. Check the preview before deleting.</p>
+              </div>
+            )}
+            {mode !== 'pick' && (
             <label className="flex items-center gap-2 text-xs text-slate-600 mt-2">
               <input type="checkbox" checked={includeOpen} onChange={(e) => setIncludeOpen(e.target.checked)} />
               Also remove orders that are still open (not completed / cancelled)
             </label>
+            )}
           </div>
 
           {/* 2. Extras */}
@@ -226,7 +248,7 @@ const TestDataTools: React.FC<{ restaurantId: string; restaurantName: string; de
             <button
               type="button"
               onClick={runPreview}
-              disabled={busy === 'preview'}
+              disabled={busy === 'preview' || (mode === 'pick' && refs.length === 0)}
               className="px-3 py-1.5 rounded-lg bg-slate-800 text-white text-xs font-semibold disabled:opacity-60"
             >
               {busy === 'preview' ? 'Checking…' : '3. Preview what will be removed'}
@@ -246,6 +268,9 @@ const TestDataTools: React.FC<{ restaurantId: string; restaurantName: string; de
                 <p className="text-xs text-slate-600">
                   Also: {Object.entries(preview.extras).map(([k, n]) => `${n} ${EXTRA_COUNT_LABEL[k] || k}`).join(' · ')}
                 </p>
+              )}
+              {preview.not_found && preview.not_found.length > 0 && (
+                <p className="text-xs text-red-600">No order found for: {preview.not_found.join(', ')}</p>
               )}
               {preview.open_orders_skipped > 0 && (
                 <p className="text-xs text-amber-600">
