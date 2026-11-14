@@ -39,6 +39,10 @@ interface OrderFormProps {
   order?: Order // editing existing order metadata
   initialTableId?: string // pre-select a table (from Tables command center)
   initialOrderType?: OrderType // start as e.g. a pick-up order (from the Tables screen)
+  /** Table already has an open order: start a SEPARATE order (another guest) instead of adding to it */
+  startNewOrder?: boolean
+  /** Guest label (A, B, C…) stamped on the new order so staff can tell the orders apart */
+  guestLabel?: string
   onClose: () => void
   onSave: (order: Order) => void
 }
@@ -51,7 +55,7 @@ const ORDER_TYPES: { value: OrderType; label: string; icon: string }[] = [
 
 const ORDER_SOURCES: OrderSource[] = ['WAITER', 'RECEPTION', 'QR', 'WHATSAPP', 'ZOMATO']
 
-const OrderForm: React.FC<OrderFormProps> = ({ order, initialTableId, initialOrderType, onClose, onSave }) => {
+const OrderForm: React.FC<OrderFormProps> = ({ order, initialTableId, initialOrderType, startNewOrder, guestLabel, onClose, onSave }) => {
   const isEditing = !!order
 
   // Lookups
@@ -117,7 +121,7 @@ const OrderForm: React.FC<OrderFormProps> = ({ order, initialTableId, initialOrd
         const result = res.data.data
         if (result && result.order) {
           setExistingOrder(result.order)
-          setAddToExisting(true) // default to adding when an open order exists
+          setAddToExisting(!startNewOrder) // default to adding when an open order exists (unless a new guest order was asked for)
         } else {
           setExistingOrder(null)
           setAddToExisting(false)
@@ -274,6 +278,7 @@ const OrderForm: React.FC<OrderFormProps> = ({ order, initialTableId, initialOrd
           order_type: orderType,
           order_source: orderSource,
           special_instructions: notes || undefined,
+          guest_label: orderType === 'DINE_IN' && guestLabel ? guestLabel : undefined,
           items,
         })
         toast.success('Order created')

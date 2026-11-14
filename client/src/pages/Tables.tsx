@@ -28,7 +28,7 @@ import Button from '../components/Button'
 import Card from '../components/Card'
 import EmptyState from '../components/EmptyState'
 import Loading from '../components/Loading'
-import { Table, TableWithStatus } from '../types/table'
+import { Table, TableWithStatus, TableActiveOrder } from '../types/table'
 import { usePayable } from '../lib/useBillTotal'
 import {
   PlusIcon,
@@ -82,9 +82,32 @@ const PICKUP_STATUS: Record<string, { label: string; badge: string }> = {
   OUT_FOR_DELIVERY: { label: 'Out',        badge: 'bg-blue-50 text-blue-700' },
 }
 
+// Several guests can share one table (guest A, B, C…), each with their own open order.
+// The API sends all of them in `active_orders` (oldest first); fall back to the latest one.
+function openOrders(t: TableWithStatus): TableActiveOrder[] {
+  if (t.active_orders && t.active_orders.length > 0) return t.active_orders
+  return t.active_order ? [t.active_order] : []
+}
+
+function orderName(o: TableActiveOrder): string {
+  return o.guest_label ? `Guest ${o.guest_label}` : `#${o.order_number.slice(-4)}`
+}
+
+// First unused guest letter (A, B, C…) for the next order on a table
+function nextGuestLabel(orders: TableActiveOrder[]): string {
+  const used = new Set(orders.map((o) => (o.guest_label || '').toUpperCase()))
+  for (let i = 0; i < 26; i++) {
+    const letter = String.fromCharCode(65 + i)
+    if (!used.has(letter)) return letter
+  }
+  return String(orders.length + 1)
+}
+
+// The table is "ready to pay" only when EVERY open order on it is ready
 function getOccupancy(t: TableWithStatus): Occupancy {
-  if (!t.active_order) return 'free'
-  if (t.active_order.status === 'READY') return 'ready'
+  const orders = openOrders(t)
+  if (orders.length === 0) return 'free'
+  if (orders.every((o) => o.status === 'READY')) return 'ready'
   return 'occupied'
 }
 
@@ -104,6 +127,9 @@ const Tables: React.FC = () => {
   // Order flows
   const [orderForTable, setOrderForTable] = useState<TableWithStatus | null>(null) // new / add-items POS
   const [panelTable, setPanelTable] = useState<TableWithStatus | null>(null)        // occupied table drawer
+  const [panelOrderId, setPanelOrderId] = useState<string | null>(null)              // which guest's order the drawer shows
+  const [newGuestOrder, setNewGuestOrder] = useState(false)                            // POS opened for a separate guest order
+  const [addItemsOrder, setAddItemsOrder] = useState<{ id: string; order_number: string } | null>(null) // add items to one guest's order
   const [payOrderId, setPayOrderId] = useState<string | null>(null)
   const [billOrderId, setBillOrderId] = useState<string | null>(null)               // bill screen for READY
   const [billTableNumber, setBillTableNumber] = useState<string | undefined>()
@@ -121,7 +147,14 @@ const Tables: React.FC = () => {
   const fetchTables = useCallback(async () => {
     try {
       const res = await api.get('/tables/with-status')
-      setTables(res.data.data || [])
+      const list: TableWithStatus[] = res.data.data || []
+      setTables(list)
+      // Keep an open drawer in sync (an order may have been paid / added); close it when the table is free
+      setPanelTable((cur) => {
+        if (!cur) return cur
+        const fresh = list.find((t) => t.id === cur.id)
+        return fresh && openOrders(fresh).length > 0 ? fresh : null
+      })
     } catch (err) {
       toast.error(getErrorMessage(err))
     } finally {
@@ -160,11 +193,11 @@ const Tables: React.FC = () => {
   }, [on, off, fetchTables, fetchPickups])
 
   const stats = useMemo(() => {
-    const occupied = tables.filter((t) => t.active_order && t.active_order.status !== 'READY').length
-    const ready = tables.filter((t) => t.active_order?.status === 'READY').length
-    const free = tables.filter((t) => !t.active_order).length
+    const occupied = tables.filter((t) => getOccupancy(t) === 'occupied').length
+    const ready = tables.filter((t) => getOccupancy(t) === 'ready').length
+    const free = tables.filter((t) => getOccupancy(t) === 'free').length
     const openRevenue =
-      tables.reduce((s, t) => s + payable(t.active_order?.total_amount || 0), 0) +
+      tables.reduce((s, t) => s + openOrders(t).reduce((a, o) => a + payable(o.total_amount || 0), 0), 0) +
       pickups.reduce((s, p) => s + payable(p.total_amount || 0), 0)
     return { total: tables.length, occupied, ready, free, openRevenue }
   }, [tables, pickups, payable])
@@ -174,14 +207,18 @@ const Tables: React.FC = () => {
     if (manageMode) {
       setEditing(t); setFormOpen(true); return
     }
-    if (!t.active_order) {
+    const orders = openOrders(t)
+    if (orders.length === 0) {
+      setNewGuestOrder(false)
       setOrderForTable(t)
-    } else if (t.active_order.status === 'READY') {
+    } else if (orders.length === 1 && orders[0].status === 'READY') {
       // Open bill screen first — waiter shows bill, then collects payment
-      setBillOrderId(t.active_order.id)
+      setBillOrderId(orders[0].id)
       setBillTableNumber(t.table_number)
       setPanelTable(t) // keep panel reference for post-payment cleanup
     } else {
+      // One or more guests: open the drawer (with a tab per guest when there are several)
+      setPanelOrderId(orders[orders.length - 1].id)
       setPanelTable(t)
     }
   }
@@ -287,16 +324,22 @@ const Tables: React.FC = () => {
                     {style.label}
                   </div>
 
-                  {table.active_order && (
-                    <div className="mt-2 space-y-0.5">
-                      <p className="text-sm font-bold text-gray-900">
-                        ₹{payable(table.active_order.total_amount).toFixed(2)}
-                      </p>
-                      <p className="text-xs text-gray-400">
-                        {table.active_order.item_count} item{table.active_order.item_count !== 1 ? 's' : ''} · {table.active_order.order_number.slice(-4)}
-                      </p>
-                    </div>
-                  )}
+                  {openOrders(table).length > 0 && (() => {
+                    const orders = openOrders(table)
+                    const total = orders.reduce((s, o) => s + payable(o.total_amount), 0)
+                    const itemCount = orders.reduce((s, o) => s + (o.item_count || 0), 0)
+                    return (
+                      <div className="mt-2 space-y-0.5">
+                        <p className="text-sm font-bold text-gray-900">₹{total.toFixed(2)}</p>
+                        <p className="text-xs text-gray-400">
+                          {itemCount} item{itemCount !== 1 ? 's' : ''} ·{' '}
+                          {orders.length > 1
+                            ? `${orders.length} orders (${orders.map((o) => o.guest_label || o.order_number.slice(-4)).join(', ')})`
+                            : orders[0].order_number.slice(-4)}
+                        </p>
+                      </div>
+                    )
+                  })()}
                 </button>
 
                 {/* Manage-mode delete (admin) — sibling so we don't nest buttons */}
@@ -378,28 +421,55 @@ const Tables: React.FC = () => {
       {orderForTable && (
         <OrderForm
           initialTableId={orderForTable.id}
-          onClose={() => setOrderForTable(null)}
-          onSave={() => { setOrderForTable(null); fetchTables() }}
+          startNewOrder={newGuestOrder}
+          guestLabel={newGuestOrder ? nextGuestLabel(openOrders(orderForTable)) : undefined}
+          onClose={() => { setOrderForTable(null); setNewGuestOrder(false) }}
+          onSave={() => { setOrderForTable(null); setNewGuestOrder(false); fetchTables() }}
         />
       )}
 
-      {/* Occupied table management drawer — hide when bill screen is open */}
-      {panelTable && panelTable.active_order && !billOrderId && (
-        <TableOrderPanel
-          tableNumber={panelTable.table_number}
-          orderId={panelTable.active_order.id}
-          refreshKey={panelRefresh}
-          onClose={() => setPanelTable(null)}
-          onChanged={() => fetchTables()}
-          onAddItems={() => {
-            const t = panelTable
-            setPanelTable(null)
-            setOrderForTable(t)
-          }}
-          onCollectPayment={() => {
-            setBillOrderId(panelTable.active_order!.id)
-            setBillTableNumber(panelTable.table_number)
-          }}
+      {/* Occupied table management drawer — hide when bill screen is open.
+          Several guests on one table get a tab each (Guest A, Guest B …). */}
+      {panelTable && !billOrderId && !addItemsOrder && (() => {
+        const orders = openOrders(panelTable)
+        const selected = orders.find((o) => o.id === panelOrderId) || orders[orders.length - 1]
+        if (!selected) return null
+        return (
+          <TableOrderPanel
+            tableNumber={panelTable.table_number}
+            orderId={selected.id}
+            orders={orders.map((o) => ({
+              id: o.id,
+              label: orderName(o),
+              amount: `₹${payable(o.total_amount).toFixed(0)}`,
+              status: o.status,
+            }))}
+            onSelectOrder={(id) => setPanelOrderId(id)}
+            onNewOrder={() => {
+              const t = panelTable
+              setPanelTable(null)
+              setNewGuestOrder(true)
+              setOrderForTable(t)
+            }}
+            refreshKey={panelRefresh}
+            onClose={() => setPanelTable(null)}
+            onChanged={() => fetchTables()}
+            onAddItems={() => setAddItemsOrder({ id: selected.id, order_number: selected.order_number })}
+            onCollectPayment={() => {
+              setBillOrderId(selected.id)
+              setBillTableNumber(panelTable.table_number)
+            }}
+          />
+        )
+      })()}
+
+      {/* Add items to ONE guest's order on a table */}
+      {addItemsOrder && (
+        <AddItemsModal
+          orderId={addItemsOrder.id}
+          orderNumber={addItemsOrder.order_number}
+          onClose={() => setAddItemsOrder(null)}
+          onAdded={() => { setAddItemsOrder(null); setPanelRefresh((k) => k + 1); fetchTables() }}
         />
       )}
 
@@ -448,9 +518,10 @@ const Tables: React.FC = () => {
           onCompleted={() => {
             setBillOrderId(null)
             setBillTableNumber(undefined)
-            setPanelTable(null)
             setPickupPanel(null)
             setPanelRefresh((k) => k + 1)
+            // fetchTables closes the table drawer when nobody is left on it, and keeps it open
+            // (on the remaining guests) when other guests still have open orders
             fetchTables()
             fetchPickups()
           }}
@@ -466,11 +537,8 @@ const Tables: React.FC = () => {
             setPayOrderId(null)
             toast.success('Payment recorded')
             try {
-              if (panelTable?.active_order) {
-                await api.patch(`/orders/${panelTable.active_order.id}`, { status: 'COMPLETED' })
-              }
+              await api.patch(`/orders/${payOrderId}`, { status: 'COMPLETED' })
             } catch { /* ignore — payment already recorded */ }
-            setPanelTable(null)
             setPanelRefresh((k) => k + 1)
             fetchTables()
           }}

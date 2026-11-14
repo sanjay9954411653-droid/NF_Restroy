@@ -62,6 +62,10 @@ interface TableOrderPanelProps {
   /** Small heading above the name: "Table" (default) or e.g. "Pick-up order" */
   kindLabel?: string
   restaurantName?: string
+  /** Several guests on one table: one chip per open order, plus an optional "+ New" chip */
+  orders?: { id: string; label: string; amount: string; status?: string }[]
+  onSelectOrder?: (id: string) => void
+  onNewOrder?: () => void
   refreshKey?: number
   onClose: () => void
   onAddItems: () => void
@@ -74,6 +78,9 @@ const TableOrderPanel: React.FC<TableOrderPanelProps> = ({
   orderId,
   kindLabel = 'Table',
   restaurantName = 'Restaurant',
+  orders,
+  onSelectOrder,
+  onNewOrder,
   refreshKey = 0,
   onClose,
   onAddItems,
@@ -145,6 +152,34 @@ const TableOrderPanel: React.FC<TableOrderPanelProps> = ({
             <XMarkIcon className="w-5 h-5" />
           </button>
         </div>
+
+        {/* Guest tabs — every open order on this table (guest A, B, ...) */}
+        {orders && orders.length > 0 && (orders.length > 1 || onNewOrder) && (
+          <div className="px-5 py-3 border-b border-gray-100 flex gap-2 overflow-x-auto shrink-0">
+            {orders.map((o) => (
+              <button
+                key={o.id}
+                onClick={() => onSelectOrder?.(o.id)}
+                className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                  o.id === orderId
+                    ? 'bg-indigo-600 text-white border-indigo-600'
+                    : 'bg-white text-gray-600 border-gray-200 hover:border-indigo-300'
+                }`}
+              >
+                {o.label} · {o.amount}
+                {o.status === 'READY' && <span className="ml-1">✓</span>}
+              </button>
+            ))}
+            {onNewOrder && (
+              <button
+                onClick={onNewOrder}
+                className="shrink-0 px-3 py-1.5 rounded-full text-xs font-medium border border-dashed border-gray-300 text-gray-500 hover:border-indigo-400 hover:text-indigo-600"
+              >
+                + New order
+              </button>
+            )}
+          </div>
+        )}
 
         {loading ? (
           <div className="flex-1 flex items-center justify-center">

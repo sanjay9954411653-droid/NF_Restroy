@@ -20,6 +20,8 @@ export interface TableActiveOrder {
   order_type: string
   created_at: string
   item_count: number
+  /** Guest label (A, B, C…) when several guests share one table */
+  guest_label?: string | null
 }
 
 /**
@@ -28,4 +30,6 @@ export interface TableActiveOrder {
  */
 export interface TableWithStatus extends Table {
   active_order: TableActiveOrder | null
+  /** Every open order on the table (guests A, B, C…), oldest first */
+  active_orders?: TableActiveOrder[]
 }
