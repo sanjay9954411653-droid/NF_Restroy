@@ -288,9 +288,6 @@ const TableOrderPanel: React.FC<TableOrderPanelProps> = ({
                   Collect Payment
                 </Button>
               )}
-              {order.status === 'READY' && !canCollect && (
-                <p className="text-center text-sm text-gray-500 py-2">Ready — payment is taken by the cashier</p>
-              )}
 
               {/* Kitchen stages → advance button */}
               {action && order.status !== 'READY' && (

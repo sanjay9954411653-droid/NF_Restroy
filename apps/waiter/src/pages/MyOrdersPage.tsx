@@ -746,7 +746,7 @@ const MyOrdersPage: React.FC = () => {
                     </div>
                     {kotActions(order)}
                     <div className="flex gap-2">
-                      {canCollect ? (
+                      {canCollect && (
                         <button
                           onClick={() => setPayingOrder(order)}
                           className="btn-primary flex-1 flex items-center justify-center gap-2 py-3"
@@ -754,8 +754,6 @@ const MyOrdersPage: React.FC = () => {
                           <CurrencyDollarIcon className="w-5 h-5" />
                           Collect Payment
                         </button>
-                      ) : (
-                        <p className="flex-1 text-center text-sm text-gray-500 self-center py-3">Payment is taken by the cashier</p>
                       )}
                       <button
                         onClick={() => navigate(`/order/add/${order.id}?table=${order.table?.table_number || ''}`)}

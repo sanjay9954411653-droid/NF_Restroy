@@ -443,7 +443,7 @@ const BillScreen: React.FC<BillScreenProps> = ({ orderId, tableNumber, onClose, 
         >
           Print Bill
         </Button>
-        {canCollect ? (
+        {canCollect && (
           <Button
             variant="primary"
             fullWidth
@@ -452,8 +452,6 @@ const BillScreen: React.FC<BillScreenProps> = ({ orderId, tableNumber, onClose, 
           >
             Collect Payment
           </Button>
-        ) : (
-          <p className="flex-1 text-center text-sm text-gray-500 self-center">Payment is taken by the cashier</p>
         )}
       </div>
 
