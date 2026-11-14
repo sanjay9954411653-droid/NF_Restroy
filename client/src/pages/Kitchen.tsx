@@ -1,9 +1,10 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import api from '../api'
 import { useSocket } from '../contexts/SocketContext'
 import { Order, OrderStatus } from '../types/order'
-import { ClockIcon, CheckCircleIcon, WifiIcon, ExclamationCircleIcon, PrinterIcon } from '@heroicons/react/24/outline'
+import { ClockIcon, CheckCircleIcon, WifiIcon, ExclamationCircleIcon, PrinterIcon, ArrowLeftIcon } from '@heroicons/react/24/outline'
 import { formatElapsed } from '../lib/utils'
 import { formatWeight } from '../lib/weight'
 import {
@@ -89,6 +90,12 @@ function withoutReadyMade<T extends { items?: any[]; order_items?: any[] }>(orde
 const AUTO_PRINT_KEY = 'kitchen_auto_print'
 
 const Kitchen: React.FC = () => {
+  const navigate = useNavigate()
+  // Back: previous screen if there is one, otherwise the dashboard
+  const goBack = () => {
+    if (window.history.state && window.history.state.idx > 0) navigate(-1)
+    else navigate('/dashboard')
+  }
   const [orders, setOrders] = useState<OrderWithItems[]>([])
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
@@ -371,7 +378,16 @@ const [pushBusy, setPushBusy] = useState(false)
 
       {/* Header */}
       <header className="bg-gray-900 border-b-2 border-indigo-500 px-3 sm:px-6 py-3 sm:py-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shrink-0">
-        <div>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={goBack}
+            aria-label="Back"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-200 text-sm font-semibold shrink-0 transition-colors"
+          >
+            <ArrowLeftIcon className="w-5 h-5" />
+            <span className="hidden sm:inline">Back</span>
+          </button>
+          <div>
           <h1 className="text-xl sm:text-2xl font-bold tracking-wider text-white">KITCHEN DISPLAY</h1>
           <p className="text-gray-400 text-xs sm:text-sm mt-0.5">
             {sorted.filter((o) => o.status === 'CREATED').length > 0 && (
@@ -380,6 +396,7 @@ const [pushBusy, setPushBusy] = useState(false)
             {sorted.filter((o) => o.status === 'ACCEPTED').length} accepted ·{' '}
             {sorted.filter((o) => o.status === 'PREPARING').length} preparing
           </p>
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2 sm:gap-4 w-full sm:w-auto">
