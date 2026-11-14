@@ -29,6 +29,24 @@ export class PaymentsController {
     }
   }
 
+  /** Optional ?from=YYYY-MM-DD&to=YYYY-MM-DD (business days, both included). Both or neither. */
+  private dateRange(req: AuthenticatedRequest): { from?: string; to?: string } {
+    const ok = (v: unknown): v is string => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
+    const { from, to } = req.query;
+    return ok(from) && ok(to) && from <= to ? { from, to } : {};
+  }
+
+  async summary(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const restaurantId = req.user?.restaurantId;
+      if (!restaurantId) throw new Error('User not associated with a restaurant');
+      const { from, to } = this.dateRange(req);
+      res.status(200).json(successResponse(await paymentsService.getSummary(restaurantId, from, to)));
+    } catch (error) {
+      next(error);
+    }
+  }
+
   async list(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
     try {
       const restaurantId = req.user?.restaurantId;
@@ -40,8 +58,9 @@ export class PaymentsController {
       const statusFilter = req.query.status as string | undefined;
       const method = req.query.method as string | undefined;
 
+      const { from, to } = this.dateRange(req);
       const { items, total } = await paymentsService.getPayments(
-        restaurantId, pagination.limit, pagination.offset, statusFilter, method,
+        restaurantId, pagination.limit, pagination.offset, statusFilter, method, from, to,
       );
       res.status(200).json(successResponse(paginatedResponse(items, total, pagination)));
     } catch (error) {

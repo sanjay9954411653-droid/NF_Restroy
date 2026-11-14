@@ -1,7 +1,7 @@
 import { pool, query } from '@/config/database';
 import { Payment, PaymentStats } from './payments.types';
 import { getOrderPayableTotal } from '@/shared/billing';
-import { isToday } from '@/shared/businessTime';
+import { isToday, localDay } from '@/shared/businessTime';
 
 export class PaymentsRepository {
   async createPayment(
@@ -252,9 +252,12 @@ export class PaymentsRepository {
     restaurantId: string,
     statusFilter?: string,
     methodFilter?: string,
+    from?: string,
+    to?: string,
   ): Promise<number> {
-    const conditions = ['restaurant_id = $1'];
+    const conditions = ['restaurant_id = $1', 'is_test = FALSE'];
     const params: any[] = [restaurantId];
+    if (from && to) { params.push(from, to); conditions.push(`${localDay('created_at')} BETWEEN $${params.length - 1}::date AND $${params.length}::date`); }
     if (statusFilter) { params.push(statusFilter); conditions.push(`status = $${params.length}`); }
     if (methodFilter) { params.push(methodFilter); conditions.push(`method = $${params.length}`); }
     const result = await query(
@@ -270,9 +273,13 @@ export class PaymentsRepository {
     offset: number,
     statusFilter?: string,
     methodFilter?: string,
+    from?: string,
+    to?: string,
   ): Promise<Payment[]> {
-    const conditions = ['p.restaurant_id = $1'];
+    // Test (demo-mode) payments are left out, exactly like the reports
+    const conditions = ['p.restaurant_id = $1', 'p.is_test = FALSE'];
     const params: any[] = [restaurantId];
+    if (from && to) { params.push(from, to); conditions.push(`${localDay('p.created_at')} BETWEEN $${params.length - 1}::date AND $${params.length}::date`); }
     if (statusFilter) { params.push(statusFilter); conditions.push(`p.status = $${params.length}`); }
     if (methodFilter) { params.push(methodFilter); conditions.push(`p.method = $${params.length}`); }
     params.push(limit, offset);
@@ -290,6 +297,32 @@ export class PaymentsRepository {
       params,
     );
     return result.rows;
+  }
+
+  /** Totals for the Payments page cards: same rules as the payment-mode report (no test payments, business-day dates). */
+  async getSummary(restaurantId: string, from?: string, to?: string) {
+    const params: any[] = [restaurantId];
+    let dateCond = '';
+    if (from && to) { params.push(from, to); dateCond = `AND ${localDay('created_at')} BETWEEN $2::date AND $3::date`; }
+    const r = await query(
+      `SELECT
+         COALESCE(SUM(amount) FILTER (WHERE status = 'PAID'), 0)     AS paid,
+         COUNT(*)             FILTER (WHERE status = 'PAID')         AS paid_count,
+         COALESCE(SUM(amount) FILTER (WHERE status = 'PENDING'), 0)  AS pending,
+         COALESCE(SUM(amount) FILTER (WHERE status = 'REFUNDED'), 0) AS refunded,
+         COUNT(*)                                                    AS total_count
+       FROM payments
+       WHERE restaurant_id = $1 AND is_test = FALSE ${dateCond}`,
+      params,
+    );
+    const x = r.rows[0];
+    return {
+      total_paid: Number(x.paid) || 0,
+      paid_count: parseInt(x.paid_count, 10) || 0,
+      total_pending: Number(x.pending) || 0,
+      total_refunded: Number(x.refunded) || 0,
+      total_count: parseInt(x.total_count, 10) || 0,
+    };
   }
 }
 

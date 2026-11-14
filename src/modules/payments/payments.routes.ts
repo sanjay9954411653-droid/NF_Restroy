@@ -13,6 +13,7 @@ const router = Router();
 
 router.post('/', authenticate, checkSubscription, (req, res, next) => paymentsController.create(req, res, next));
 router.get('/', authenticate, (req, res, next) => paymentsController.list(req, res, next));
+router.get('/summary', authenticate, (req, res, next) => paymentsController.summary(req, res, next));
 router.get('/stats', authenticate, authorize('ADMIN'), (req, res, next) => paymentsController.getStats(req, res, next));
 // What is left to collect on an order: bill grand total (GST + charges - coupon) minus PAID so far.
 router.get('/order/:orderId/balance', authenticate, async (req: AuthenticatedRequest, res, next) => {

@@ -55,12 +55,18 @@ export class PaymentsService {
     offset: number = 0,
     statusFilter?: string,
     methodFilter?: string,
+    from?: string,
+    to?: string,
   ): Promise<{ items: Payment[]; total: number }> {
     const [items, total] = await Promise.all([
-      paymentsRepository.findByRestaurantIdFiltered(restaurantId, limit, offset, statusFilter, methodFilter),
-      paymentsRepository.countByRestaurantId(restaurantId, statusFilter, methodFilter),
+      paymentsRepository.findByRestaurantIdFiltered(restaurantId, limit, offset, statusFilter, methodFilter, from, to),
+      paymentsRepository.countByRestaurantId(restaurantId, statusFilter, methodFilter, from, to),
     ]);
     return { items, total };
+  }
+
+  async getSummary(restaurantId: string, from?: string, to?: string) {
+    return paymentsRepository.getSummary(restaurantId, from, to);
   }
 
   async updatePayment(paymentId: string, restaurantId: string, payload: UpdatePaymentRequest): Promise<Payment> {
