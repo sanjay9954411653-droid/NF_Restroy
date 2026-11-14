@@ -753,9 +753,9 @@ export class OrdersRepository {
   async getStats(restaurantId: string): Promise<OrderStats> {
     const result = await query(
       `SELECT
-        COUNT(*) FILTER (WHERE ${isToday('o.created_at')}) as total_orders_today,
-        COUNT(*) FILTER (WHERE o.status = 'COMPLETED' AND ${isToday('o.created_at')}) as completed_orders_today,
-        COUNT(*) FILTER (WHERE o.status = 'CANCELLED' AND ${isToday('o.created_at')}) as cancelled_orders_today,
+        COUNT(*) FILTER (WHERE o.is_test = FALSE AND ${isToday('o.created_at')}) as total_orders_today,
+        COUNT(*) FILTER (WHERE o.is_test = FALSE AND o.status = 'COMPLETED' AND ${isToday('o.created_at')}) as completed_orders_today,
+        COUNT(*) FILTER (WHERE o.is_test = FALSE AND o.status = 'CANCELLED' AND ${isToday('o.created_at')}) as cancelled_orders_today,
         COUNT(*) FILTER (
           WHERE o.status NOT IN ('COMPLETED', 'CANCELLED')
           AND NOW() > o.created_at + (r.delay_threshold_minutes || ' minutes')::interval

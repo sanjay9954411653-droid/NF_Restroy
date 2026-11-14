@@ -235,7 +235,7 @@ export class PaymentsRepository {
          COALESCE(SUM(amount) FILTER (WHERE status = 'REFUNDED' AND ${isToday('created_at')}), 0) AS refunded_amount_today,
          COUNT(*) FILTER (WHERE status = 'PENDING' AND ${isToday('created_at')}) AS pending_payments_today
        FROM payments
-       WHERE restaurant_id = $1`,
+       WHERE restaurant_id = $1 AND is_test = FALSE`,
       [restaurantId]
     );
 

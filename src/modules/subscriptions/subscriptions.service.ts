@@ -403,8 +403,8 @@ export class SubscriptionsService {
          p.name AS plan_name,
          p.price AS plan_price,
          (SELECT COUNT(*) FROM users u WHERE u.restaurant_id = r.id) AS user_count,
-         (SELECT COUNT(*) FROM orders o WHERE o.restaurant_id = r.id AND ${isToday('o.created_at')}) AS orders_today,
-         (SELECT COALESCE(SUM(pay.amount), 0) FROM payments pay WHERE pay.restaurant_id = r.id AND pay.status = 'PAID' AND ${isToday('pay.created_at')}) AS revenue_today
+         (SELECT COUNT(*) FROM orders o WHERE o.restaurant_id = r.id AND o.is_test = FALSE AND ${isToday('o.created_at')}) AS orders_today,
+         (SELECT COALESCE(SUM(pay.amount), 0) FROM payments pay WHERE pay.restaurant_id = r.id AND pay.status = 'PAID' AND pay.is_test = FALSE AND ${isToday('pay.created_at')}) AS revenue_today
        FROM restaurants r
        LEFT JOIN subscriptions s ON s.restaurant_id = r.id
        LEFT JOIN subscription_plans p ON p.id = s.plan_id

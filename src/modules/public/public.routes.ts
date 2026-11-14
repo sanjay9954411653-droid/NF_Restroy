@@ -17,7 +17,7 @@ import { successResponse } from '@/shared/utils/responseHandler';
 import { generateOrderNumber } from '@/shared/utils/orderNumber';
 import { NotFoundError, BadRequestError } from '@/shared/errors/AppError';
 import { eventBroadcaster } from '@/shared/socket/eventBroadcaster';
-import { publicOrderRateLimiter } from '@/shared/middleware/rateLimiter';
+import { publicOrderRateLimiter, passcodeRateLimiter } from '@/shared/middleware/rateLimiter';
 import { env } from '@/config/env';
 import { createRazorpayOrder } from '@/modules/payments/gateways/razorpay.gateway';
 import { getOrderPayableTotal } from '@/shared/billing';
@@ -230,7 +230,7 @@ const VerifyPasscodeSchema = z.object({
   passcode: z.string().min(1).max(10),
 });
 
-router.post('/tables/:slug/verify-passcode', async (req: Request, res: Response, next: NextFunction) => {
+router.post('/tables/:slug/verify-passcode', passcodeRateLimiter, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const restaurant = await getRestaurantBySlug(req.params.slug);
     if (!restaurant) throw new NotFoundError('Restaurant not found');

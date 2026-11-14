@@ -128,6 +128,7 @@ export class OrganizationRepository {
          COALESCE(COUNT(*), 0)::bigint as total_orders
        FROM orders
        WHERE restaurant_id IN (${placeholders})
+         AND is_test = FALSE
          AND status IN ('PAYMENT_PENDING', 'COMPLETED')`,
       restaurantIds,
     );
@@ -142,6 +143,7 @@ export class OrganizationRepository {
          COALESCE(COUNT(o.id), 0)::bigint as orders
        FROM restaurants r
        LEFT JOIN orders o ON o.restaurant_id = r.id
+         AND o.is_test = FALSE
          AND o.status IN ('PAYMENT_PENDING', 'COMPLETED')
        WHERE r.id IN (${placeholders})
        GROUP BY r.id, r.name, r.slug

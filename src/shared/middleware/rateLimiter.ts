@@ -55,6 +55,27 @@ export const publicOrderRateLimiter = rateLimit({
 });
 
 /**
+ * Table passcode limiter — applied to /public/tables/:slug/verify-passcode.
+ * Only WRONG guesses count (15 per 10 minutes per IP), so guests entering the right code are never
+ * slowed down, but the short table PIN can no longer be brute-forced.
+ */
+export const passcodeRateLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 15,
+  skipSuccessfulRequests: true,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    error: {
+      code: 'TOO_MANY_REQUESTS',
+      message: 'Too many wrong codes. Please wait a few minutes or ask the staff.',
+    },
+  },
+  skip: () => process.env.NODE_ENV === 'test',
+});
+
+/**
  * Customer OTP rate limiter — applied to /customers/otp/request and /verify.
  * 5 requests per 10 minutes per IP. Strict, because each request can trigger an
  * SMS — this blunts SMS-bombing and cost-abuse on the public surface.

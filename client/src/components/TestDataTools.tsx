@@ -35,7 +35,8 @@ const EXTRA_COUNT_LABEL: Record<string, string> = {
   table_requests: 'table requests', inventory: 'inventory rows', print_jobs: 'print jobs',
 }
 
-const today = () => new Date().toISOString().slice(0, 10)
+// Local calendar day (toISOString would give the UTC day, which is yesterday before 5:30 AM in India)
+const today = () => new Date().toLocaleDateString('en-CA')
 
 interface Preview {
   restaurant: { id: string; name: string; demo_mode: boolean }
