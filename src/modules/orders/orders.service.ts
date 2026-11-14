@@ -255,6 +255,10 @@ export class OrdersService {
     return Array.from(grouped.values());
   }
 
+  async getOpenPickups(restaurantId: string, access?: { tableIds: string[]; pickup: boolean } | null) {
+    return ordersRepository.findOpenPickups(restaurantId, access);
+  }
+
   async getOrders(
     restaurantId: string,
     limit: number = 50,

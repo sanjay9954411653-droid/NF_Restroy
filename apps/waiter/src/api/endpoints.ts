@@ -4,7 +4,7 @@
  */
 
 import { api } from './client'
-import type { Order, Table, TableWithStatus, MenuItem, MenuCategory, CartLine, OrderType, OrderSource } from '../types'
+import type { Order, Table, TableWithStatus, PickupOrder, MenuItem, MenuCategory, CartLine, OrderType, OrderSource } from '../types'
 
 // ── Auth ─────────────────────────────────────────────────────────────────────
 
@@ -31,6 +31,10 @@ export const tablesApi = {
   // Tables enriched with their active order (occupancy command-center view)
   withStatus: () =>
     api.get<{ success: boolean; data: TableWithStatus[] }>('/tables/with-status'),
+
+  // Open pick-up (parcel) orders — no table
+  activePickups: () =>
+    api.get<{ success: boolean; data: PickupOrder[] }>('/orders/pickups/active'),
 
   // What this waiter may access (pick-up allowed or not)
   myAccess: () =>

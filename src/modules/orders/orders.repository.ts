@@ -424,6 +424,41 @@ export class OrdersRepository {
   }
 
   /**
+   * Open pick-up (PARCEL) orders — not yet completed or cancelled — oldest first.
+   * Shown on the Tables screen so staff can manage them next to the tables.
+   * A waiter limited to certain tables only sees pick-ups if they were given pick-up access.
+   */
+  async findOpenPickups(
+    restaurantId: string,
+    access?: { tableIds: string[]; pickup: boolean } | null,
+  ): Promise<any[]> {
+    if (access && !access.pickup) return [];
+    const result = await query(
+      `SELECT o.id, o.order_number, o.token_number, o.status, o.total_amount, o.guest_label,
+              o.special_instructions, o.created_at,
+              (SELECT COALESCE(SUM(oi.quantity), 0) FROM order_items oi
+                WHERE oi.order_id = o.id AND oi.status <> 'CANCELLED') AS item_count
+       FROM orders o
+       WHERE o.restaurant_id = $1
+         AND o.order_type = 'PARCEL'
+         AND o.status NOT IN ('COMPLETED', 'CANCELLED')
+       ORDER BY o.created_at ASC`,
+      [restaurantId],
+    );
+    return result.rows.map((r) => ({
+      id: r.id,
+      order_number: r.order_number,
+      token_number: r.token_number,
+      status: r.status,
+      total_amount: parseFloat(r.total_amount) || 0,
+      guest_label: r.guest_label ?? null,
+      special_instructions: r.special_instructions ?? null,
+      created_at: r.created_at,
+      item_count: parseInt(r.item_count, 10) || 0,
+    }));
+  }
+
+  /**
    * Count orders for a restaurant, with optional status filter.
    * Used to return pagination metadata (total count).
    */

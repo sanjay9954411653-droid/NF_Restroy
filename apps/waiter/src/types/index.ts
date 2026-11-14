@@ -25,6 +25,18 @@ export interface TableActiveOrder {
   guest_label?: string | null
 }
 
+/** An open pick-up (parcel) order — no table (from GET /orders/pickups/active) */
+export interface PickupOrder {
+  id: string
+  order_number: string
+  token_number?: number | null
+  status: OrderStatus
+  total_amount: number
+  guest_label?: string | null
+  item_count: number
+  created_at: string
+}
+
 /** A table enriched with its current occupancy / active order */
 export interface TableWithStatus extends Table {
   active_order: TableActiveOrder | null

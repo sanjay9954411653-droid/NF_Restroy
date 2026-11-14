@@ -88,6 +88,19 @@ export class OrdersController {
     }
   }
 
+  /** Open pick-up orders, for the Tables screen. */
+  async activePickups(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const restaurantId = req.user?.restaurantId;
+      if (!restaurantId) throw new Error('User not associated with a restaurant');
+      const allowedTables = await getWaiterAccess(req.user);
+      const orders = await ordersService.getOpenPickups(restaurantId, allowedTables);
+      res.status(200).json(successResponse(orders));
+    } catch (error) {
+      next(error);
+    }
+  }
+
   async getById(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
     try {
       const restaurantId = req.user?.restaurantId;

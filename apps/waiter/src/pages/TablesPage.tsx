@@ -14,9 +14,9 @@ import { useEffect, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { useCartStore, draftItemCount } from '../store/useCartStore'
-import { tablesApi } from '../api/endpoints'
+import { tablesApi, ordersApi } from '../api/endpoints'
 import { getErrorMessage } from '../api/client'
-import type { TableWithStatus } from '../types'
+import type { TableWithStatus, PickupOrder } from '../types'
 import { usePayable } from '../lib/usePayable'
 
 type Occupancy = 'free' | 'occupied' | 'ready'
@@ -39,6 +39,7 @@ const TablesPage: React.FC = () => {
   const drafts = useCartStore((st) => st.drafts)   // unsent items per table
   const [tables, setTables] = useState<TableWithStatus[]>([])
   const [loading, setLoading] = useState(true)
+  const [pickups, setPickups] = useState<PickupOrder[]>([])
 
   const fetchTables = useCallback(async () => {
     try {
@@ -51,11 +52,19 @@ const TablesPage: React.FC = () => {
     }
   }, [])
 
+  const fetchPickups = useCallback(async () => {
+    try {
+      const res = await ordersApi.activePickups()
+      setPickups(res.data.data || [])
+    } catch { /* tables still work without it */ }
+  }, [])
+
   useEffect(() => {
     fetchTables()
-    const t = setInterval(fetchTables, 15000) // keep occupancy fresh
+    fetchPickups()
+    const t = setInterval(() => { fetchTables(); fetchPickups() }, 15000) // keep occupancy fresh
     return () => clearInterval(t)
-  }, [fetchTables])
+  }, [fetchTables, fetchPickups])
 
   const [picker, setPicker] = useState<TableWithStatus | null>(null)
   const [pickupAllowed, setPickupAllowed] = useState(true)
@@ -127,6 +136,35 @@ const TablesPage: React.FC = () => {
           )}
         </div>
       </button>
+      )}
+
+      {/* Open pick-up orders — tap one to add items */}
+      {pickupAllowed && pickups.length > 0 && (
+        <div>
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
+            Open pick-up orders ({pickups.length})
+          </p>
+          <div className="space-y-2">
+            {pickups.map((p) => (
+              <button
+                key={p.id}
+                onClick={() => navigate(`/order/add/${p.id}?table=Pick-up`)}
+                className={`w-full card p-3 flex items-center justify-between text-left hover:border-indigo-300 ${
+                  p.status === 'READY' ? 'border-emerald-300 ring-2 ring-emerald-100' : ''
+                }`}
+              >
+                <span>
+                  <span className="font-semibold text-gray-900">#{p.order_number.slice(-4)}</span>
+                  <span className="text-xs text-gray-500 ml-2">{p.item_count} items</span>
+                  <span className={`block text-xs font-medium mt-0.5 ${p.status === 'READY' ? 'text-emerald-600' : 'text-gray-500'}`}>
+                    {p.status === 'READY' ? 'Ready for pick-up' : p.status.charAt(0) + p.status.slice(1).toLowerCase()}
+                  </span>
+                </span>
+                <span className="font-semibold text-gray-700">₹{payable(p.total_amount).toFixed(2)}</span>
+              </button>
+            ))}
+          </div>
+        </div>
       )}
 
       {/* Legend */}

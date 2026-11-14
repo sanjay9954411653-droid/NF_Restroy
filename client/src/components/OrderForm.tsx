@@ -38,6 +38,7 @@ interface CartLine {
 interface OrderFormProps {
   order?: Order // editing existing order metadata
   initialTableId?: string // pre-select a table (from Tables command center)
+  initialOrderType?: OrderType // start as e.g. a pick-up order (from the Tables screen)
   onClose: () => void
   onSave: (order: Order) => void
 }
@@ -50,7 +51,7 @@ const ORDER_TYPES: { value: OrderType; label: string; icon: string }[] = [
 
 const ORDER_SOURCES: OrderSource[] = ['WAITER', 'RECEPTION', 'QR', 'WHATSAPP', 'ZOMATO']
 
-const OrderForm: React.FC<OrderFormProps> = ({ order, initialTableId, onClose, onSave }) => {
+const OrderForm: React.FC<OrderFormProps> = ({ order, initialTableId, initialOrderType, onClose, onSave }) => {
   const isEditing = !!order
 
   // Lookups
@@ -61,7 +62,7 @@ const OrderForm: React.FC<OrderFormProps> = ({ order, initialTableId, onClose, o
 
   // Order meta
   const [tableId, setTableId] = useState(order?.table_id || initialTableId || '')
-  const [orderType, setOrderType] = useState<OrderType>(order?.order_type || 'DINE_IN')
+  const [orderType, setOrderType] = useState<OrderType>(order?.order_type || initialOrderType || 'DINE_IN')
   const [orderSource, setOrderSource] = useState<OrderSource>(order?.order_source || 'WAITER')
   const [notes, setNotes] = useState(order?.special_instructions || '')
 

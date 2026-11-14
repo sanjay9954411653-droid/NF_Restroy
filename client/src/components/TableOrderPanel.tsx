@@ -58,6 +58,8 @@ const NEXT_ACTION: Partial<Record<OrderStatus, { next: OrderStatus; label: strin
 interface TableOrderPanelProps {
   tableNumber: string
   orderId: string
+  /** Small heading above the name: "Table" (default) or e.g. "Pick-up order" */
+  kindLabel?: string
   restaurantName?: string
   refreshKey?: number
   onClose: () => void
@@ -69,6 +71,7 @@ interface TableOrderPanelProps {
 const TableOrderPanel: React.FC<TableOrderPanelProps> = ({
   tableNumber,
   orderId,
+  kindLabel = 'Table',
   restaurantName = 'Restaurant',
   refreshKey = 0,
   onClose,
@@ -131,7 +134,7 @@ const TableOrderPanel: React.FC<TableOrderPanelProps> = ({
         {/* Header */}
         <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between shrink-0">
           <div>
-            <p className="text-xs text-gray-400 uppercase tracking-wide">Table</p>
+            <p className="text-xs text-gray-400 uppercase tracking-wide">{kindLabel}</p>
             <h2 className="text-xl font-bold text-gray-900 leading-none mt-0.5">{tableNumber}</h2>
           </div>
           <button onClick={onClose} className="p-2 rounded-lg text-gray-400 hover:bg-gray-100">

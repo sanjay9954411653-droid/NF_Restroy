@@ -8,6 +8,7 @@ const router = Router();
 
 router.post('/', authenticate, checkSubscription, (req, res, next) => ordersController.create(req, res, next));
 router.get('/', authenticate, (req, res, next) => ordersController.list(req, res, next));
+router.get('/pickups/active', authenticate, (req, res, next) => ordersController.activePickups(req, res, next));
 router.get('/stats', authenticate, authorize('ADMIN'), (req, res, next) => ordersController.getStats(req, res, next));
 // Active order lookup for a table (for "add to existing order" flow)
 router.get('/active/by-table/:tableId', authenticate, (req, res, next) => ordersController.getActiveByTable(req, res, next));

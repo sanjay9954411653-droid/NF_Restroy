@@ -22,6 +22,8 @@ import OrderForm from '../components/OrderForm'
 import PaymentForm from '../components/PaymentForm'
 import TableOrderPanel from '../components/TableOrderPanel'
 import BillScreen from '../components/BillScreen'
+import AddItemsModal from '../components/AddItemsModal'
+import { formatRelative } from '../lib/utils'
 import Button from '../components/Button'
 import Card from '../components/Card'
 import EmptyState from '../components/EmptyState'
@@ -33,6 +35,7 @@ import {
   Cog6ToothIcon,
   TableCellsIcon,
   TrashIcon,
+  ShoppingBagIcon,
 } from '@heroicons/react/24/outline'
 
 // Visual treatment for each occupancy state
@@ -57,6 +60,26 @@ const occupancyStyles: Record<Occupancy, { ring: string; badge: string; dot: str
     dot: 'bg-amber-400 animate-pulse',
     label: 'Ready to pay',
   },
+}
+
+// Open pick-up (parcel) orders shown under the tables
+interface PickupOrder {
+  id: string
+  order_number: string
+  token_number?: number | null
+  status: string
+  total_amount: number
+  guest_label?: string | null
+  item_count: number
+  created_at: string
+}
+
+const PICKUP_STATUS: Record<string, { label: string; badge: string }> = {
+  CREATED:          { label: 'New',        badge: 'bg-gray-100 text-gray-700' },
+  ACCEPTED:         { label: 'Accepted',   badge: 'bg-blue-50 text-blue-700' },
+  PREPARING:        { label: 'Preparing',  badge: 'bg-amber-50 text-amber-700' },
+  READY:            { label: 'Ready — collect payment', badge: 'bg-emerald-50 text-emerald-700' },
+  OUT_FOR_DELIVERY: { label: 'Out',        badge: 'bg-blue-50 text-blue-700' },
 }
 
 function getOccupancy(t: TableWithStatus): Occupancy {
@@ -86,6 +109,12 @@ const Tables: React.FC = () => {
   const [billTableNumber, setBillTableNumber] = useState<string | undefined>()
   const [panelRefresh, setPanelRefresh] = useState(0)
 
+  // Pick-up orders (no table)
+  const [pickups, setPickups] = useState<PickupOrder[]>([])
+  const [pickupPanel, setPickupPanel] = useState<PickupOrder | null>(null)
+  const [newPickup, setNewPickup] = useState(false)
+  const [addItemsFor, setAddItemsFor] = useState<PickupOrder | null>(null)
+
   // The floor shows what the customer actually pays (items + charges + GST), same as the Bill.
   const payable = usePayable()
 
@@ -100,11 +129,18 @@ const Tables: React.FC = () => {
     }
   }, [])
 
-  useEffect(() => { fetchTables() }, [fetchTables])
+  const fetchPickups = useCallback(async () => {
+    try {
+      const res = await api.get('/orders/pickups/active')
+      setPickups(res.data.data || [])
+    } catch { /* the tables still work if this fails */ }
+  }, [])
+
+  useEffect(() => { fetchTables(); fetchPickups() }, [fetchTables, fetchPickups])
 
   // Refetch occupancy on any order/table change so colours stay live
   useEffect(() => {
-    const refresh = () => fetchTables()
+    const refresh = () => { fetchTables(); fetchPickups() }
     on('ORDER_CREATED', refresh)
     on('ORDER_UPDATED', refresh)
     on('ORDER_COMPLETED', refresh)
@@ -118,15 +154,17 @@ const Tables: React.FC = () => {
       off('ORDER_CANCELLED'); off('ORDER_DELETED')
       off('TABLE_UPDATED'); off('TABLE_CREATED'); off('TABLE_DELETED')
     }
-  }, [on, off, fetchTables])
+  }, [on, off, fetchTables, fetchPickups])
 
   const stats = useMemo(() => {
     const occupied = tables.filter((t) => t.active_order && t.active_order.status !== 'READY').length
     const ready = tables.filter((t) => t.active_order?.status === 'READY').length
     const free = tables.filter((t) => !t.active_order).length
-    const openRevenue = tables.reduce((s, t) => s + payable(t.active_order?.total_amount || 0), 0)
+    const openRevenue =
+      tables.reduce((s, t) => s + payable(t.active_order?.total_amount || 0), 0) +
+      pickups.reduce((s, p) => s + payable(p.total_amount || 0), 0)
     return { total: tables.length, occupied, ready, free, openRevenue }
-  }, [tables, payable])
+  }, [tables, pickups, payable])
 
   // Tap handler — free table → new order; READY table → bill screen; occupied → panel
   const handleTableTap = (t: TableWithStatus) => {
@@ -274,6 +312,56 @@ const Tables: React.FC = () => {
         </div>
       )}
 
+      {/* Pick-up orders — open parcel orders (no table), managed from here */}
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+            <ShoppingBagIcon className="w-5 h-5 text-indigo-600" />
+            Pick-up orders
+            <span className="text-sm font-normal text-gray-400">({pickups.length} open)</span>
+          </h2>
+          <Button variant="outline" leftIcon={<PlusIcon className="w-4 h-4" />} onClick={() => setNewPickup(true)}>
+            New pick-up
+          </Button>
+        </div>
+
+        {pickups.length === 0 ? (
+          <Card padding="sm">
+            <p className="text-sm text-gray-400 text-center py-3">No open pick-up orders</p>
+          </Card>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+            {pickups.map((p) => {
+              const st = PICKUP_STATUS[p.status] || { label: p.status, badge: 'bg-gray-100 text-gray-700' }
+              const ready = p.status === 'READY'
+              return (
+                <button
+                  key={p.id}
+                  onClick={() => {
+                    if (ready) { setBillOrderId(p.id); setBillTableNumber(undefined); setPickupPanel(p) }
+                    else setPickupPanel(p)
+                  }}
+                  className={`text-left bg-white border rounded-2xl p-4 transition-all hover:shadow-md ${
+                    ready ? 'border-emerald-300 ring-2 ring-emerald-100' : 'border-gray-200 hover:border-indigo-300'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <p className="text-lg font-bold text-gray-900">#{p.order_number.slice(-4)}</p>
+                    <span className="text-xs text-gray-400">{formatRelative(p.created_at)}</span>
+                  </div>
+                  {p.guest_label && <p className="text-xs text-gray-500 mt-0.5 truncate">{p.guest_label}</p>}
+                  <div className={`mt-2 inline-flex items-center px-2 py-1 rounded-md text-xs font-medium ${st.badge}`}>{st.label}</div>
+                  <div className="mt-2 space-y-0.5">
+                    <p className="text-sm font-bold text-gray-900">₹{payable(p.total_amount).toFixed(2)}</p>
+                    <p className="text-xs text-gray-400">{p.item_count} item{p.item_count !== 1 ? 's' : ''}</p>
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+        )}
+      </div>
+
       {/* Admin: create/edit table */}
       {formOpen && (
         <TableForm
@@ -312,6 +400,38 @@ const Tables: React.FC = () => {
         />
       )}
 
+      {/* New pick-up order */}
+      {newPickup && (
+        <OrderForm
+          initialOrderType="PARCEL"
+          onClose={() => setNewPickup(false)}
+          onSave={() => { setNewPickup(false); fetchPickups() }}
+        />
+      )}
+
+      {/* Pick-up order drawer (same actions as a table: items, KOT, bill, payment) */}
+      {pickupPanel && !billOrderId && !addItemsFor && (
+        <TableOrderPanel
+          tableNumber={`#${pickupPanel.order_number.slice(-4)}`}
+          kindLabel="Pick-up order"
+          orderId={pickupPanel.id}
+          refreshKey={panelRefresh}
+          onClose={() => setPickupPanel(null)}
+          onChanged={() => fetchPickups()}
+          onAddItems={() => setAddItemsFor(pickupPanel)}
+          onCollectPayment={() => { setBillOrderId(pickupPanel.id); setBillTableNumber(undefined) }}
+        />
+      )}
+
+      {addItemsFor && (
+        <AddItemsModal
+          orderId={addItemsFor.id}
+          orderNumber={addItemsFor.order_number}
+          onClose={() => setAddItemsFor(null)}
+          onAdded={() => { setAddItemsFor(null); setPanelRefresh((k) => k + 1); fetchPickups() }}
+        />
+      )}
+
       {/* Bill screen — shown for READY orders before payment */}
       {billOrderId && (
         <BillScreen
@@ -320,13 +440,16 @@ const Tables: React.FC = () => {
           onClose={() => {
             setBillOrderId(null)
             setBillTableNumber(undefined)
+            setPickupPanel(null)
           }}
           onCompleted={() => {
             setBillOrderId(null)
             setBillTableNumber(undefined)
             setPanelTable(null)
+            setPickupPanel(null)
             setPanelRefresh((k) => k + 1)
             fetchTables()
+            fetchPickups()
           }}
         />
       )}
