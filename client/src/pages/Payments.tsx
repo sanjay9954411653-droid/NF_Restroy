@@ -38,6 +38,24 @@ const METHOD_LABEL: Record<string, string> = { CASH: 'Cash', CARD: 'Card', UPI: 
 
 const ITEMS_PER_PAGE = 20
 
+type Period = 'today' | 'yesterday' | '7d' | 'month' | 'all'
+const PERIODS: { key: Period; label: string }[] = [
+  { key: 'today', label: 'Today' },
+  { key: 'yesterday', label: 'Yesterday' },
+  { key: '7d', label: 'Last 7 days' },
+  { key: 'month', label: 'This month' },
+  { key: 'all', label: 'All time' },
+]
+const ymd = (d: Date) => d.toLocaleDateString('en-CA')
+function periodDates(p: Exclude<Period, 'all'>): { from: string; to: string } {
+  const now = new Date()
+  const day = (o: number) => { const d = new Date(now); d.setDate(d.getDate() + o); return ymd(d) }
+  if (p === 'yesterday') return { from: day(-1), to: day(-1) }
+  if (p === '7d') return { from: day(-6), to: day(0) }
+  if (p === 'month') return { from: ymd(new Date(now.getFullYear(), now.getMonth(), 1)), to: day(0) }
+  return { from: day(0), to: day(0) }
+}
+
 const Payments: React.FC = () => {
   const navigate = useNavigate()
   const [payments, setPayments] = useState<Payment[]>([])
@@ -48,14 +66,21 @@ const Payments: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(1)
   const [markingId, setMarkingId] = useState<string | null>(null)
   const [editing, setEditing] = useState<Payment | null>(null)
+  const [period, setPeriod] = useState<Period>('today')
+  const [summary, setSummary] = useState<{ total_paid: number; total_pending: number; total_refunded: number; total_count: number } | null>(null)
   const [editMethod, setEditMethod] = useState<string>('CASH')
   const [editRef, setEditRef] = useState('')
   const [savingEdit, setSavingEdit] = useState(false)
 
   const fetchPayments = async () => {
     try {
-      const res = await api.get('/payments', { params: { limit: 500 } })
-         setPayments(res.data.data?.items || [])
+      const params = period === 'all' ? {} : periodDates(period)
+      const [res, sum] = await Promise.all([
+        api.get('/payments', { params: { limit: 500, ...params } }),
+        api.get('/payments/summary', { params }),
+      ])
+      setPayments(res.data.data?.items || [])
+      setSummary(sum.data.data || null)
     } catch (err) {
       toast.error(getErrorMessage(err))
     } finally {
@@ -63,7 +88,7 @@ const Payments: React.FC = () => {
     }
   }
 
-  useEffect(() => { fetchPayments() }, [])
+  useEffect(() => { fetchPayments() }, [period])
 
   const filtered = useMemo(() => {
     return payments.filter((p) => {
@@ -90,6 +115,7 @@ const Payments: React.FC = () => {
     try {
       await api.delete(`/payments/${id}`)
       setPayments((p) => p.filter((x) => x.id !== id))
+      fetchPayments()
       toast.success('Payment deleted')
     } catch (err) {
       toast.error(getErrorMessage(err))
@@ -102,6 +128,7 @@ const Payments: React.FC = () => {
     try {
       await api.patch(`/payments/${id}`, { status: 'PAID' })
       setPayments((p) => p.map((x) => x.id === id ? { ...x, status: 'PAID' as any } : x))
+      fetchPayments()
       toast.success('Payment marked as paid')
     } catch (err) {
       toast.error(getErrorMessage(err))
@@ -140,9 +167,10 @@ const Payments: React.FC = () => {
   }
 
   // Summary stats
-  const totalPaid = payments.filter((p) => p.status === 'PAID').reduce((s, p) => s + Number(p.amount), 0)
-  const totalPending = payments.filter((p) => p.status === 'PENDING').reduce((s, p) => s + Number(p.amount), 0)
-  const totalRefunded = payments.filter((p) => p.status === 'REFUNDED').reduce((s, p) => s + Number(p.amount), 0)
+  // Totals come from the server (same rules as the payment-mode report), not from the 500 rows loaded here
+  const totalPaid = summary?.total_paid ?? payments.filter((p) => p.status === 'PAID').reduce((s, p) => s + Number(p.amount), 0)
+  const totalPending = summary?.total_pending ?? payments.filter((p) => p.status === 'PENDING').reduce((s, p) => s + Number(p.amount), 0)
+  const totalRefunded = summary?.total_refunded ?? payments.filter((p) => p.status === 'REFUNDED').reduce((s, p) => s + Number(p.amount), 0)
 
   if (loading) return <Loading text="Loading payments…" />
 
@@ -151,7 +179,7 @@ const Payments: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Payments</h1>
-          <p className="text-sm text-slate-500 mt-0.5">{payments.length} total transactions</p>
+          <p className="text-sm text-slate-500 mt-0.5">{summary?.total_count ?? payments.length} transactions · {PERIODS.find((x) => x.key === period)?.label}</p>
         </div>
         <Button
           variant="primary"
@@ -160,6 +188,20 @@ const Payments: React.FC = () => {
         >
           Record Payment
         </Button>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        {PERIODS.map((x) => (
+          <button
+            key={x.key}
+            onClick={() => setPeriod(x.key)}
+            className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+              period === x.key ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+            }`}
+          >
+            {x.label}
+          </button>
+        ))}
       </div>
 
       {/* Stats */}
