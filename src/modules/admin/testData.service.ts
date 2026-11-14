@@ -11,6 +11,7 @@
  *   mode "before" — placed before a date
  *   mode "all"    — every order
  *   mode "test"   — only orders flagged is_test (placed while Demo mode was on)
+ *   mode "pick"   — specific orders, by order number or order id (open orders included: you chose them)
  * Open orders (not completed / cancelled) are skipped unless include_open is true.
  */
 import { z } from 'zod';
@@ -23,7 +24,8 @@ export const EXTRAS = ['loyalty', 'reviews', 'reservations', 'table_requests', '
 
 export const TestDataFilterSchema = z
   .object({
-    mode: z.enum(['range', 'before', 'all', 'test']),
+    mode: z.enum(['range', 'before', 'all', 'test', 'pick']),
+    order_refs: z.array(z.string().trim().min(1).max(64)).max(200).optional(),
     from: DATE.optional(),
     to: DATE.optional(),
     before: DATE.optional(),
@@ -36,6 +38,7 @@ export const TestDataFilterSchema = z
       if (!v.from || !v.to) ctx.addIssue({ code: 'custom', message: 'Choose a from and to date' });
       else if (v.from > v.to) ctx.addIssue({ code: 'custom', message: '"From" must not be after "To"' });
     }
+    if (v.mode === 'pick' && !(v.order_refs && v.order_refs.length)) ctx.addIssue({ code: 'custom', message: 'Enter at least one order number or id' });
     if (v.mode === 'before' && !v.before) ctx.addIssue({ code: 'custom', message: 'Choose the "before" date' });
   });
 
@@ -44,11 +47,15 @@ export const DemoModeSchema = z.object({ enabled: z.boolean() });
 
 const CLOSED = "('COMPLETED','CANCELLED')";
 
+/** Order numbers / ids typed by the super admin (a leading # is ignored). */
+const refsOf = (f: TestDataFilter): string[] =>
+  [...new Set((f.order_refs ?? []).map((r) => r.replace(/^#/, '').trim()).filter(Boolean))];
+
 /** WHERE for the orders to clear. $1 is always the restaurant id. */
 function orderWhere(f: TestDataFilter, withOpenRule = true): { sql: string; params: unknown[] } {
   const parts = ['o.restaurant_id = $1'];
   const params: unknown[] = [];
-  if (withOpenRule && !f.include_open) parts.push(`o.status IN ${CLOSED}`);
+  if (withOpenRule && !f.include_open && f.mode !== 'pick') parts.push(`o.status IN ${CLOSED}`);
   if (f.mode === 'range') {
     parts.push(`${localDay('o.created_at')} BETWEEN $2::date AND $3::date`);
     params.push(f.from, f.to);
@@ -57,13 +64,16 @@ function orderWhere(f: TestDataFilter, withOpenRule = true): { sql: string; para
     params.push(f.before);
   } else if (f.mode === 'test') {
     parts.push('o.is_test = TRUE');
+  } else if (f.mode === 'pick') {
+    parts.push('(o.order_number::text = ANY($2::text[]) OR o.id::text = ANY($2::text[]))');
+    params.push(refsOf(f));
   }
   return { sql: parts.join(' AND '), params };
 }
 
 /** Date condition for other tables (by their own created_at). null = this table is not part of this mode. */
 function otherDate(col: string, tz: boolean, f: TestDataFilter): { sql: string; params: unknown[] } | null {
-  if (f.mode === 'test') return null; // test mode only clears flagged orders and what hangs off them
+  if (f.mode === 'test' || f.mode === 'pick') return null; // these modes only clears flagged orders and what hangs off them
   const day = tz ? `(${col} AT TIME ZONE '${BUSINESS_TZ}')::date` : localDay(col);
   if (f.mode === 'all') return { sql: 'TRUE', params: [] };
   if (f.mode === 'before') return { sql: `${day} < $2::date`, params: [f.before] };
@@ -108,7 +118,7 @@ export const testDataService = {
 
     // Orders that match everything except being "open" — skipped unless include_open
     let openSkipped = 0;
-    if (!f.include_open) {
+    if (!f.include_open && f.mode !== 'pick') {
       const wAll = orderWhere(f, false);
       const r = await query(
         `SELECT COUNT(*) AS n FROM orders o WHERE ${wAll.sql} AND o.status NOT IN ${CLOSED}`,
@@ -119,7 +129,16 @@ export const testDataService = {
 
     const sample = await query(
       `SELECT o.id, o.order_number, o.status, o.order_type, o.order_source, o.total_amount, o.is_test, o.created_at
-       FROM orders o WHERE ${w.sql} ORDER BY o.created_at DESC LIMIT 10`, p);
+       FROM orders o WHERE ${w.sql} ORDER BY o.created_at DESC LIMIT ${f.mode === 'pick' ? 50 : 10}`, p);
+
+    // Typed numbers / ids that matched no order, so a typo is obvious before deleting
+    let notFound: string[] = [];
+    if (f.mode === 'pick') {
+      const hit = await query(
+        `SELECT o.order_number::text AS n, o.id::text AS id FROM orders o WHERE ${w.sql}`, p);
+      const seen = new Set<string>(hit.rows.flatMap((r) => [r.n, r.id]));
+      notFound = refsOf(f).filter((r) => !seen.has(r));
+    }
 
     const extras: Record<string, number> = {};
     const idsSql = `SELECT o.id FROM orders o WHERE ${w.sql}`;
@@ -159,6 +178,7 @@ export const testDataService = {
       first_order_at: m.first_at,
       last_order_at: m.last_at,
       open_orders_skipped: openSkipped,
+      not_found: notFound,
       extras,
       sample: sample.rows,
     };
@@ -183,7 +203,7 @@ export const testDataService = {
     return {
       exported_at: new Date().toISOString(),
       restaurant: { id: restaurant.id, name: restaurant.name },
-      filter: { mode: f.mode, from: f.from, to: f.to, before: f.before, include_open: f.include_open },
+      filter: { mode: f.mode, from: f.from, to: f.to, before: f.before, include_open: f.include_open, order_refs: f.mode === 'pick' ? refsOf(f) : undefined },
       order_count: orders.rows.length,
       orders: orders.rows,
     };
@@ -267,7 +287,7 @@ export const testDataService = {
          VALUES ($1, $2, $3, $4::jsonb, $5::jsonb)`,
         [
           restaurantId, restaurant.name, performedBy,
-          JSON.stringify({ mode: f.mode, from: f.from, to: f.to, before: f.before, include_open: f.include_open, include: f.include }),
+          JSON.stringify({ mode: f.mode, from: f.from, to: f.to, before: f.before, include_open: f.include_open, include: f.include, order_refs: f.mode === 'pick' ? refsOf(f) : undefined }),
           JSON.stringify(counts),
         ],
       );
