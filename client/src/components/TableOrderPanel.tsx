@@ -25,6 +25,7 @@ import CancelItemsSheet from './CancelItemsSheet'
 import { printKOT } from './PrintKOT'
 import { printReceipt } from './PrintReceipt'
 import { useGrandTotal } from '../lib/useBillTotal'
+import { useCanCollectPayment } from '../lib/usePaymentAccess'
 import {
   XMarkIcon,
   PlusIcon,
@@ -64,6 +65,8 @@ interface TableOrderPanelProps {
   restaurantName?: string
   /** Several guests on one table: one chip per open order, plus an optional "+ New" chip */
   orders?: { id: string; label: string; amount: string; status?: string }[]
+  /** Guest letter (A, B, C…) of the order being shown */
+  guestLabel?: string
   onSelectOrder?: (id: string) => void
   onNewOrder?: () => void
   refreshKey?: number
@@ -79,6 +82,7 @@ const TableOrderPanel: React.FC<TableOrderPanelProps> = ({
   kindLabel = 'Table',
   restaurantName = 'Restaurant',
   orders,
+  guestLabel,
   onSelectOrder,
   onNewOrder,
   refreshKey = 0,
@@ -95,6 +99,7 @@ const TableOrderPanel: React.FC<TableOrderPanelProps> = ({
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const grandTotal = useGrandTotal(order, items)
+  const canCollect = useCanCollectPayment()
 
   const loadOrder = async () => {
     try {
@@ -195,7 +200,14 @@ const TableOrderPanel: React.FC<TableOrderPanelProps> = ({
             <div className="flex-1 overflow-y-auto scrollbar-thin">
               <div className="px-5 py-4 border-b border-gray-100">
                 <div className="flex items-center justify-between">
-                  <span className="font-semibold text-gray-900">{order.order_number}</span>
+                  <span className="font-semibold text-gray-900 flex items-center gap-2">
+                    {guestLabel && (
+                      <span className="inline-flex items-center justify-center min-w-[1.75rem] h-7 px-2 rounded-lg bg-indigo-600 text-white text-sm font-bold">
+                        {guestLabel}
+                      </span>
+                    )}
+                    {order.order_number}
+                  </span>
                   <Badge variant={statusBadge(order.status).variant} dot>
                     {statusBadge(order.status).label}
                   </Badge>
@@ -265,7 +277,7 @@ const TableOrderPanel: React.FC<TableOrderPanelProps> = ({
             {/* Action footer */}
             <div className="border-t border-gray-100 px-4 pt-4 footer-safe space-y-2 shrink-0">
               {/* READY → Collect Payment is the single primary action */}
-              {order.status === 'READY' && (
+              {order.status === 'READY' && canCollect && (
                 <Button
                   variant="primary"
                   fullWidth
@@ -275,6 +287,9 @@ const TableOrderPanel: React.FC<TableOrderPanelProps> = ({
                 >
                   Collect Payment
                 </Button>
+              )}
+              {order.status === 'READY' && !canCollect && (
+                <p className="text-center text-sm text-gray-500 py-2">Ready — payment is taken by the cashier</p>
               )}
 
               {/* Kitchen stages → advance button */}
@@ -314,7 +329,7 @@ const TableOrderPanel: React.FC<TableOrderPanelProps> = ({
                 >
                   Print Bill
                 </Button>
-                {order.status !== 'READY' && (
+                {order.status !== 'READY' && canCollect && (
                   <Button
                     variant="secondary"
                     leftIcon={<CurrencyDollarIcon className="w-4 h-4" />}

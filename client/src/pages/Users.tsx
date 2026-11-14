@@ -53,6 +53,9 @@ const Users: React.FC = () => {
   const [assignedIds, setAssignedIds] = useState<string[]>([])
   const [pickupAssigned, setPickupAssigned] = useState(false)
   const [search, setSearch] = useState('')
+  // Admin switch: can waiters collect payment?
+  const [waiterCanPay, setWaiterCanPay] = useState<boolean | null>(null)
+  const [waiterPayBusy, setWaiterPayBusy] = useState(false)
   const [roleFilter, setRoleFilter] = useState<UserRole | 'ALL'>('ALL')
 
   const fetchUsers = async () => {
@@ -67,6 +70,27 @@ const Users: React.FC = () => {
   }
 
   useEffect(() => { fetchUsers() }, [])
+
+  useEffect(() => {
+    api.get('/restaurants/me')
+      .then((res) => setWaiterCanPay(res.data.data?.waiter_can_collect_payment !== false))
+      .catch(() => {})
+  }, [])
+
+  const handleToggleWaiterPay = async () => {
+    if (waiterCanPay === null || waiterPayBusy) return
+    const next = !waiterCanPay
+    setWaiterPayBusy(true)
+    try {
+      await api.put('/restaurants/me', { waiter_can_collect_payment: next })
+      setWaiterCanPay(next)
+      toast.success(next ? 'Waiters can collect payment' : 'Waiters can no longer collect payment')
+    } catch (err) {
+      toast.error(getErrorMessage(err))
+    } finally {
+      setWaiterPayBusy(false)
+    }
+  }
 
   const filtered = useMemo(() => {
     return users.filter((u) => {
@@ -197,6 +221,33 @@ const Users: React.FC = () => {
           Add User
         </Button>
       </div>
+
+      {/* Waiter payment permission */}
+      {waiterCanPay !== null && (
+        <Card padding="sm">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="text-sm font-semibold text-gray-900">Waiters can collect payment</p>
+              <p className="text-xs text-gray-500 mt-0.5">
+                {waiterCanPay
+                  ? 'On: waiters can take payment at the table.'
+                  : 'Off: waiters can still take orders and print the bill, but only reception and admin can collect payment.'}
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={waiterCanPay}
+              aria-label="Waiters can collect payment"
+              disabled={waiterPayBusy}
+              onClick={handleToggleWaiterPay}
+              className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-50 ${waiterCanPay ? 'bg-emerald-500' : 'bg-gray-300'}`}
+            >
+              <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${waiterCanPay ? 'translate-x-5' : 'translate-x-0.5'}`} />
+            </button>
+          </div>
+        </Card>
+      )}
 
       {/* Filters */}
       <Card padding="sm">

@@ -18,6 +18,7 @@ import { clearDelayAlert } from '@/shared/jobs/delayDetector';
 import { pushService } from '@/modules/push/push.service';
 import { notifyReadyMadeRound } from '@/shared/readyMadeNotify';
 import { printingService } from '@/modules/printing/printing.service';
+import { assertCanCollectPayment } from '@/shared/waiterPaymentAccess';
 import { assertTableAccess, assertOrderAccess, getWaiterAccess } from '@/shared/tableAccess';
 
 export class OrdersController {
@@ -267,6 +268,8 @@ export class OrdersController {
       const { id } = req.params;
       await assertOrderAccess(req.user, id);
       const payload = UpdateOrderRequestSchema.parse(req.body) as UpdateOrderRequest;
+      // Closing an order as COMPLETED is the "paid" step — same rule as taking the payment
+      if (payload.status === 'COMPLETED') await assertCanCollectPayment(req.user);
       const order = await ordersService.updateOrder(id, restaurantId, payload);
 
       // An order that waited for acceptance (QR / online) gets its KOT when the restaurant accepts it

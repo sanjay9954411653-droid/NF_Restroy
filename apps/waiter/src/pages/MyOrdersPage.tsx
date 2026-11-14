@@ -16,6 +16,7 @@ import toast from 'react-hot-toast'
 import { PlusIcon, CurrencyDollarIcon, XMarkIcon, CheckCircleIcon, PrinterIcon, ArrowPathIcon } from '@heroicons/react/24/outline'
 import { useOrderStore } from '../store/useOrderStore'
 import { ordersApi, paymentsApi, PaymentMethod } from '../api/endpoints'
+import { useCanCollectPayment } from '../lib/usePaymentAccess'
 import { formatDistanceToNow } from 'date-fns'
 import type { Order, OrderStatus } from '../types'
 import { getReadyRounds, isFullyServed, orderItemsOf, isIncomingPending, SOURCE_LABEL } from '../lib/orderRounds'
@@ -433,6 +434,7 @@ const MyOrdersPage: React.FC = () => {
   const navigate = useNavigate()
   const { orders, queue, isLoading, fetchOrders, serve, markRoundReady, updateStatus } = useOrderStore()
   const [payingOrder, setPayingOrder] = useState<Order | null>(null)
+  const canCollect = useCanCollectPayment() // admin can switch payment off for waiters
   const [cancelOrder, setCancelOrder] = useState<Order | null>(null)
   const [servingKey, setServingKey] = useState<string | null>(null)
   const [readyKey, setReadyKey] = useState<string | null>(null)       // round being saved
@@ -744,13 +746,17 @@ const MyOrdersPage: React.FC = () => {
                     </div>
                     {kotActions(order)}
                     <div className="flex gap-2">
-                      <button
-                        onClick={() => setPayingOrder(order)}
-                        className="btn-primary flex-1 flex items-center justify-center gap-2 py-3"
-                      >
-                        <CurrencyDollarIcon className="w-5 h-5" />
-                        Collect Payment
-                      </button>
+                      {canCollect ? (
+                        <button
+                          onClick={() => setPayingOrder(order)}
+                          className="btn-primary flex-1 flex items-center justify-center gap-2 py-3"
+                        >
+                          <CurrencyDollarIcon className="w-5 h-5" />
+                          Collect Payment
+                        </button>
+                      ) : (
+                        <p className="flex-1 text-center text-sm text-gray-500 self-center py-3">Payment is taken by the cashier</p>
+                      )}
                       <button
                         onClick={() => navigate(`/order/add/${order.id}?table=${order.table?.table_number || ''}`)}
                         className="btn-secondary flex items-center gap-1.5 py-3 px-3 text-sm"

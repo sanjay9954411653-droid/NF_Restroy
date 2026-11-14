@@ -22,6 +22,7 @@ import { formatWeight, ratePerKg } from '../lib/weight'
 import Button from './Button'
 import Loading from './Loading'
 import PaymentForm from './PaymentForm'
+import { useCanCollectPayment } from '../lib/usePaymentAccess'
 import { PrinterIcon, CurrencyDollarIcon, XMarkIcon } from '@heroicons/react/24/outline'
 import { calcBill } from '../lib/billing'
 import { couponApi } from '../lib/growthApi'
@@ -77,6 +78,7 @@ const BillScreen: React.FC<BillScreenProps> = ({ orderId, tableNumber, onClose, 
   const [restaurant, setRestaurant] = useState<RestaurantInfo | null>(null)
   const [loading, setLoading] = useState(true)
   const [paymentOpen, setPaymentOpen] = useState(false)
+  const canCollect = useCanCollectPayment()
   const [coupon, setCoupon] = useState<{ code: string | null; discount: number }>({ code: null, discount: 0 })
   const [couponInput, setCouponInput] = useState('')
   const [couponBusy, setCouponBusy] = useState(false)
@@ -441,14 +443,18 @@ const BillScreen: React.FC<BillScreenProps> = ({ orderId, tableNumber, onClose, 
         >
           Print Bill
         </Button>
-        <Button
-          variant="primary"
-          fullWidth
-          leftIcon={<CurrencyDollarIcon className="w-4 h-4" />}
-          onClick={() => setPaymentOpen(true)}
-        >
-          Collect Payment
-        </Button>
+        {canCollect ? (
+          <Button
+            variant="primary"
+            fullWidth
+            leftIcon={<CurrencyDollarIcon className="w-4 h-4" />}
+            onClick={() => setPaymentOpen(true)}
+          >
+            Collect Payment
+          </Button>
+        ) : (
+          <p className="flex-1 text-center text-sm text-gray-500 self-center">Payment is taken by the cashier</p>
+        )}
       </div>
 
       {/* Payment form */}

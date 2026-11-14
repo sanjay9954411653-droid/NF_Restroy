@@ -25,6 +25,7 @@ export const UpdateRestaurantRequestSchema = z.object({
   restaurant_type: z.enum(['FULL_SERVICE','QSR_SIMPLE','QSR_CHAIN','CAFE','CLOUD_KITCHEN','HYBRID']).optional(),
   qsr_enabled: z.boolean().optional(),
   ordering_enabled: z.boolean().optional(),
+  waiter_can_collect_payment: z.boolean().optional(),
   token_prefix: z.string().max(10).optional(),
   token_daily_reset: z.boolean().optional(),
   features: z.object({
@@ -116,6 +117,7 @@ export interface Restaurant {
   restaurant_type: RestaurantType;
   qsr_enabled: boolean;
   ordering_enabled: boolean;
+  waiter_can_collect_payment: boolean;
   token_prefix: string;
   token_daily_reset: boolean;
   token_counter: number;

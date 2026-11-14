@@ -4,6 +4,7 @@ import { CreatePaymentRequestSchema, UpdatePaymentRequestSchema } from './paymen
 import { successResponse } from '@/shared/utils/responseHandler';
 import { parsePagination, paginatedResponse } from '@/shared/utils/pagination';
 import { AuthenticatedRequest } from '@/shared/middleware/authenticate';
+import { assertCanCollectPayment } from '@/shared/waiterPaymentAccess';
 import { eventBroadcaster } from '@/shared/socket/eventBroadcaster';
 
 export class PaymentsController {
@@ -12,6 +13,7 @@ export class PaymentsController {
       const restaurantId = req.user?.restaurantId;
       if (!restaurantId) throw new Error('User not associated with a restaurant');
 
+      await assertCanCollectPayment(req.user);
       const payload = CreatePaymentRequestSchema.parse(req.body);
       const payment = await paymentsService.createPayment(restaurantId, payload);
 

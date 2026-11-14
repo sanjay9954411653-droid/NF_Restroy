@@ -11,7 +11,7 @@ const RESTAURANT_COLS = `id, name, slug, demo_mode, auto_approve_online_orders, 
   service_charge_percent::float8 AS service_charge_percent,
   other_charges_percent::float8 AS other_charges_percent,
   extra_charges_amount::float8 AS extra_charges_amount,
-  show_name_in_bill, bill_social_keys, ordering_enabled,
+  show_name_in_bill, bill_social_keys, ordering_enabled, waiter_can_collect_payment,
   created_at, updated_at`;
 
 export class RestaurantsRepository {
@@ -61,6 +61,7 @@ export class RestaurantsRepository {
       restaurant_type: string;
       qsr_enabled: boolean;
       ordering_enabled: boolean;
+      waiter_can_collect_payment: boolean;
       token_prefix: string;
       token_daily_reset: boolean;
       logo_url: string | null;
@@ -98,6 +99,7 @@ export class RestaurantsRepository {
     if (updates.tax_rate !== undefined) { fields.push(`tax_rate = $${paramIndex++}`); values.push(updates.tax_rate); }
     if (updates.tax_inclusive !== undefined) { fields.push(`tax_inclusive = $${paramIndex++}`); values.push(updates.tax_inclusive); }
     if (updates.restaurant_type !== undefined) { fields.push(`restaurant_type = $${paramIndex++}`); values.push(updates.restaurant_type); }
+    if (updates.waiter_can_collect_payment !== undefined) { fields.push(`waiter_can_collect_payment = $${paramIndex++}`); values.push(updates.waiter_can_collect_payment); }
     if (updates.ordering_enabled !== undefined) { fields.push(`ordering_enabled = $${paramIndex++}`); values.push(updates.ordering_enabled); }
     if (updates.qsr_enabled !== undefined) { fields.push(`qsr_enabled = $${paramIndex++}`); values.push(updates.qsr_enabled); }
     if (updates.token_prefix !== undefined) { fields.push(`token_prefix = $${paramIndex++}`); values.push(updates.token_prefix); }

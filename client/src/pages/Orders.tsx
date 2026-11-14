@@ -5,6 +5,7 @@ import api, { getErrorMessage } from '../api'
 import { useSocket } from '../contexts/SocketContext'
 import OrderForm from '../components/OrderForm'
 import PaymentForm from '../components/PaymentForm'
+import { useCanCollectPayment } from '../lib/usePaymentAccess'
 import Button from '../components/Button'
 import Input from '../components/Input'
 import Badge from '../components/Badge'
@@ -63,6 +64,7 @@ const Orders: React.FC = () => {
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [editingOrder, setEditingOrder] = useState<Order | undefined>()
   const [isPaymentOpen, setIsPaymentOpen] = useState(false)
+  const canCollect = useCanCollectPayment()
   const [payingOrderId, setPayingOrderId] = useState<string>()
   const [busyId, setBusyId] = useState<string>()
 
@@ -295,7 +297,7 @@ const Orders: React.FC = () => {
                 {/* Card actions */}
                 <div className="px-4 py-3 border-t border-gray-100 bg-gray-50/50">
                   {/* READY → single Collect Payment action */}
-                  {order.status === 'READY' && (
+                  {order.status === 'READY' && canCollect && (
                     <div className="mb-2">
                       <Button
                         variant="primary"
