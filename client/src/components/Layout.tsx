@@ -210,6 +210,10 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     return true
   })
 
+  // NOTE: called as a function below (SidebarContent()), NOT rendered as a JSX element.
+  // Defined inside Layout, a JSX element of it gets a brand-new component type on
+  // every Layout re-render (each page change), which remounts the sidebar and throws the
+  // nav scroll position back to the top. Calling it keeps the same DOM, so scroll stays put.
   const SidebarContent = () => (
     <div className="flex flex-col h-full bg-navy-950 text-white">
       {/* Logo */}
@@ -408,7 +412,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     <div className="min-h-screen bg-slate-50 flex">
       {/* Desktop sidebar */}
       <aside className="hidden lg:flex lg:flex-col w-64 fixed inset-y-0 left-0 z-30 shadow-xl">
-        <SidebarContent />
+        {SidebarContent()}
       </aside>
 
       {/* Mobile sidebar overlay */}
@@ -425,7 +429,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             >
               <XMarkIcon className="w-5 h-5" />
             </button>
-            <SidebarContent />
+            {SidebarContent()}
           </aside>
         </div>
       )}
