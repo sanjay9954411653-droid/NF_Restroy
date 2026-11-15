@@ -5,7 +5,6 @@ import { Order, OrderType, OrderSource } from '../types/order'
 import { MenuItem, MenuCategory } from '../types/menu'
 import { Table } from '../types/table'
 import { formatCurrency } from '../lib/utils'
-import { printKOT } from './PrintKOT'
 import Button from './Button'
 import Input from './Input'
 import WeightEntryModal from './WeightEntryModal'
@@ -18,8 +17,6 @@ import {
   ShoppingCartIcon,
   ExclamationTriangleIcon,
   CheckBadgeIcon,
-  PrinterIcon,
-  CheckCircleIcon,
 } from '@heroicons/react/24/outline'
 import { inCategory } from '../utils/menuCategories'
 
@@ -82,8 +79,6 @@ const OrderForm: React.FC<OrderFormProps> = ({ order, initialTableId, initialOrd
   const [checkingTable, setCheckingTable] = useState(false)
 
   // After placing — show a success step with a one-tap KOT print button
-  const [placedOrder, setPlacedOrder] = useState<Order | null>(null)
-  const [placedItems, setPlacedItems] = useState<{ menu_item_id: string; menu_item_name: string; quantity: number; unit_price: number; weight_grams?: number; special_instructions?: string }[]>([])
 
   // Load lookups
   useEffect(() => {
@@ -255,23 +250,12 @@ const OrderForm: React.FC<OrderFormProps> = ({ order, initialTableId, initialOrd
       special_instructions: c.special_instructions || undefined,
     }))
 
-    // Snapshot cart lines for the KOT (so we can print without a refetch)
-    const snapshot = cart.map((c) => ({
-      menu_item_id: c.menu_item_id,
-      menu_item_name: c.name,
-      quantity: c.quantity,
-      unit_price: c.price,
-      weight_grams: c.weight_grams,
-      special_instructions: c.special_instructions,
-    }))
-
     try {
       if (addToExisting && existingOrder) {
         // Append to the running tab
         const res = await api.post(`/orders/${existingOrder.id}/items`, { items })
         toast.success(`Added ${cartCount} item${cartCount > 1 ? 's' : ''} to ${existingOrder.order_number}`)
-        setPlacedOrder(res.data.data.order)
-        setPlacedItems(snapshot)
+        onSave(res.data.data.order)
       } else {
         const res = await api.post('/orders', {
           table_id: orderType === 'DINE_IN' ? tableId : undefined,
@@ -282,8 +266,7 @@ const OrderForm: React.FC<OrderFormProps> = ({ order, initialTableId, initialOrd
           items,
         })
         toast.success('Order created')
-        setPlacedOrder(res.data.data.order)
-        setPlacedItems(snapshot)
+        onSave(res.data.data.order)
       }
     } catch (err) {
       toast.error(getErrorMessage(err))
@@ -327,57 +310,6 @@ const OrderForm: React.FC<OrderFormProps> = ({ order, initialTableId, initialOrd
               </Button>
             </div>
           </form>
-        </div>
-      </div>
-    )
-  }
-
-  // ============ SUCCESS STEP (after placing) — quick KOT print ============
-  if (placedOrder) {
-    // Attach the selected table so the KOT shows "TABLE x" instead of order type
-    const selectedTable = tables.find((t) => t.id === tableId)
-    const orderForPrint: Order = {
-      ...placedOrder,
-      table: selectedTable
-        ? { id: selectedTable.id, table_number: Number(selectedTable.table_number) }
-        : placedOrder.table ?? null,
-    }
-    const total = placedItems.reduce((s, i) => s + i.unit_price * i.quantity, 0)
-
-    return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in">
-        <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => { onSave(placedOrder); }} />
-        <div className="relative w-full max-w-sm bg-white rounded-2xl shadow-2xl animate-slide-up p-6 text-center">
-          <div className="mx-auto w-14 h-14 rounded-full bg-emerald-50 flex items-center justify-center">
-            <CheckCircleIcon className="w-8 h-8 text-emerald-500" />
-          </div>
-          <h2 className="text-lg font-semibold text-gray-900 mt-3">
-            {addToExisting ? 'Items added' : 'Order placed'}
-          </h2>
-          <p className="text-sm text-gray-500 mt-1">
-            {placedOrder.order_number}
-            {selectedTable ? ` · Table ${selectedTable.table_number}` : ''}
-          </p>
-          <p className="text-2xl font-bold text-gray-900 mt-3">{formatCurrency(total)}</p>
-
-          <div className="mt-6 space-y-2">
-            <Button
-              variant="primary"
-              fullWidth
-              size="lg"
-              leftIcon={<PrinterIcon className="w-5 h-5" />}
-              onClick={() => printKOT(orderForPrint, placedItems as any, 'Kitchen')}
-            >
-              Print KOT
-            </Button>
-            <Button
-              variant="outline"
-              fullWidth
-              onClick={() => onSave(placedOrder)}
-            >
-              Done
-            </Button>
-          </div>
         </div>
       </div>
     )
