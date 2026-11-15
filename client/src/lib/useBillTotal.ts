@@ -9,7 +9,7 @@ import { BillCoupon, BillRestaurant, computeBill, loadBillingContext } from './b
  * other charges + GST) — identical to the Bill screen and the payment form.
  * Returns null until the restaurant's bill settings have loaded.
  */
-export function useGrandTotal(order: Order | null, items: OrderItem[]): number | null {
+export function useGrandTotal(order: Order | null, items: OrderItem[], refreshKey = 0): number | null {
   const [ctx, setCtx] = useState<{ restaurant: BillRestaurant; coupon: BillCoupon } | null>(null)
   const orderId = order?.id
   const itemCount = items.length
@@ -22,12 +22,12 @@ export function useGrandTotal(order: Order | null, items: OrderItem[]): number |
       .then((c) => { if (!cancelled) setCtx(c) })
       .catch(() => {})
     return () => { cancelled = true }
-  }, [orderId, itemCount, orderTotal])
+  }, [orderId, itemCount, orderTotal, refreshKey])
 
   return useMemo(
     () => (ctx && order ? Math.round(computeBill({ order, items, ...ctx }).grandTotal * 100) / 100 : null),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [ctx, orderId, itemCount, orderTotal],
+    [ctx, orderId, itemCount, orderTotal, refreshKey],
   )
 }
 
