@@ -108,7 +108,8 @@ export function buildKOTBytes(order: KOTOrder | Order, items: OrderItem[], resta
 
   out.push(...left(line(W)))
   out.push(...center(new Date().toLocaleTimeString('en-IN')))
-  out.push(...bytes(prefs.autoCutter ? '\n\n\n' : '\n\n\n\n\n'))
+  // Feed enough paper that the last line clears the cutter / tear bar (~1.5 cm below the print head)
+  out.push(...bytes(prefs.autoCutter ? '\n\n\n\n\n\n' : '\n\n\n\n\n\n\n\n'))
   if (prefs.autoCutter) out.push(...bytes(GS, 0x56, 1)) // partial cut
   return new Uint8Array(out)
 }
@@ -411,7 +412,7 @@ export function buildTestBytes(cols?: number): Uint8Array {
   out.push(...bytes('1234567890'.repeat(5).slice(0, W) + '\n'))
   out.push(...bytes('If the number line above is fully\nvisible, the paper size is correct.\n'))
   out.push(...bytes('-'.repeat(W) + '\n'))
-  out.push(...bytes(prefs.autoCutter ? '\n\n\n' : '\n\n\n\n\n'))
+  out.push(...bytes(prefs.autoCutter ? '\n\n\n\n\n\n' : '\n\n\n\n\n\n\n\n'))
   if (prefs.autoCutter) out.push(...bytes(GS, 0x56, 1))
   return new Uint8Array(out)
 }

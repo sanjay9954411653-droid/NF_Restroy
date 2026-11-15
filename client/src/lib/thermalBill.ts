@@ -135,7 +135,8 @@ export function buildBillBytes(data: BillData, b: ReturnType<typeof computeBill>
   if (restaurant.gstin) text('This is a computer generated bill')
   align(0)
 
-  raw(prefs.autoCutter ? '\n\n\n' : '\n\n\n\n\n')
+  // Feed enough paper that the footer clears the cutter / tear bar (it sits ~1.5 cm below the print head)
+  raw(prefs.autoCutter ? '\n\n\n\n\n\n' : '\n\n\n\n\n\n\n\n')
   if (prefs.autoCutter) raw(GS, 0x56, 1)
   return new Uint8Array(out)
 }
