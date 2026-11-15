@@ -63,6 +63,7 @@ const Payments: React.FC = () => {
   const [formOpen, setFormOpen] = useState(false)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('ALL')
+  const [methodFilter, setMethodFilter] = useState<string>('ALL')
   const [currentPage, setCurrentPage] = useState(1)
   const [markingId, setMarkingId] = useState<string | null>(null)
   const [totalOnServer, setTotalOnServer] = useState(0)
@@ -106,14 +107,21 @@ const Payments: React.FC = () => {
   const filtered = useMemo(() => {
     return payments.filter((p) => {
       const matchStatus = statusFilter === 'ALL' || p.status === statusFilter
+      const matchMethod = methodFilter === 'ALL' || p.method === methodFilter
       const matchSearch =
         !search ||
         p.id.toLowerCase().includes(search.toLowerCase()) ||
         p.order_id.toLowerCase().includes(search.toLowerCase()) ||
         (p.reference_number || '').toLowerCase().includes(search.toLowerCase())
-      return matchStatus && matchSearch
+      return matchStatus && matchMethod && matchSearch
     })
-  }, [payments, search, statusFilter])
+  }, [payments, search, statusFilter, methodFilter])
+
+  // Money actually collected in the rows currently listed (handy for cash / UPI reconciliation)
+  const filteredPaidTotal = useMemo(
+    () => filtered.filter((p) => p.status === 'PAID').reduce((sum, p) => sum + Number(p.amount || 0), 0),
+    [filtered]
+  )
 
   const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE)
   const paginated = useMemo(() => {
@@ -121,7 +129,7 @@ const Payments: React.FC = () => {
     return filtered.slice(start, start + ITEMS_PER_PAGE)
   }, [filtered, currentPage])
 
-  useEffect(() => { setCurrentPage(1) }, [search, statusFilter])
+  useEffect(() => { setCurrentPage(1) }, [search, statusFilter, methodFilter])
 
   const handleDelete = async (id: string) => {
     if (!confirm('Delete this payment record?')) return
@@ -260,6 +268,28 @@ const Payments: React.FC = () => {
             ))}
           </div>
         </div>
+
+        {/* Payment method filter */}
+        <div className="flex flex-wrap items-center gap-2 mt-3">
+          <span className="text-xs font-medium text-slate-500 mr-1">Method</span>
+          {(['ALL', ...METHODS] as const).map((m) => (
+            <button
+              key={m}
+              onClick={() => setMethodFilter(m)}
+              className={`px-3 py-2 text-xs font-medium rounded-lg transition-colors ${
+                methodFilter === m
+                  ? 'bg-brand-600 text-white'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
+            >
+              {m === 'ALL' ? 'All' : `${METHOD_ICON[m]} ${METHOD_LABEL[m]}`}
+            </button>
+          ))}
+        </div>
+        <p className="text-xs text-slate-500 mt-3">
+          Showing {filtered.length} payment{filtered.length === 1 ? '' : 's'} · Collected{' '}
+          <span className="font-semibold text-slate-700">{formatCurrency(filteredPaidTotal)}</span>
+        </p>
       </Card>
 
       {/* Only shown if a very long period had more payments than the page can hold */}
