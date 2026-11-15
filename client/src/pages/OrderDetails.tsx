@@ -104,6 +104,52 @@ const OrderDetails: React.FC = () => {
     }
   }
 
+  // A merged row = the same dish added in several batches. Cancel from the newest batch backwards.
+  const handleCancelGroup = async (lines: OrderItem[]) => {
+    if (lines.length === 1) return handleCancelItem(lines[0])
+    if (!order) return
+    const itemName = lines[0].menu_item_name || 'this item'
+    const totalQty = lines.reduce((s, l) => s + l.quantity, 0)
+    const input = window.prompt(
+      `${itemName}: ${totalQty} portions on this order.\nHow many do you want to cancel? (1-${totalQty})`,
+      '1',
+    )
+    if (input === null) return
+    const n = Number(input)
+    if (!Number.isInteger(n) || n < 1 || n > totalQty) {
+      toast.error(`Enter a number between 1 and ${totalQty}`)
+      return
+    }
+    const wholeGroup = n === totalQty
+    const lastActive = wholeGroup && billItems.length <= lines.length
+    const confirmText = !wholeGroup
+      ? `Cancel ${n} of ${totalQty} ${itemName}? The other ${totalQty - n} will remain on this order.`
+      : lastActive
+        ? `Cancel ${itemName}? This is the last active item, so the order will also be closed.`
+        : `Cancel all ${totalQty} ${itemName}? The other items will remain on this order.`
+    if (!window.confirm(confirmText)) return
+    setUpdating(true)
+    try {
+      let remaining = n
+      for (const line of [...lines].reverse()) {
+        if (remaining <= 0 || !line.id) break
+        const take = Math.min(remaining, line.quantity)
+        await api.patch(
+          `/orders/${order.id}/items/${line.id}`,
+          take === line.quantity ? { status: 'CANCELLED' } : { status: 'CANCELLED', cancel_quantity: take },
+        )
+        remaining -= take
+      }
+      toast.success(`${n} × ${itemName} cancelled`)
+      await fetchAll()
+    } catch (err) {
+      toast.error(getErrorMessage(err))
+      await fetchAll()
+    } finally {
+      setUpdating(false)
+    }
+  }
+
   const handleStatusUpdate = async (newStatus: OrderStatus) => {
     if (!order) return
     setUpdating(true)
@@ -131,6 +177,27 @@ const OrderDetails: React.FC = () => {
   const badge = STATUS_BADGE[order.status]
   const nextStatus = NEXT_STATUS[order.status]
   const items: OrderItem[] = (order as any).items || (order as any).order_items || []
+
+  // The same dish added in several batches is stored as separate lines (each batch is its own
+  // kitchen round). Show it as ONE row with the total quantity; the stored lines are untouched.
+  // Cancelled lines and by-weight lines are never merged.
+  const rows: { key: string; item: OrderItem; lines: OrderItem[]; quantity: number }[] = []
+  const rowByKey = new Map<string, (typeof rows)[number]>()
+  items.forEach((it, i) => {
+    const mergeable = it.status !== 'CANCELLED' && !it.weight_grams && !!it.id
+    const key = mergeable
+      ? `${it.menu_item_id}|${Number(it.unit_price || 0)}|${it.special_instructions || ''}`
+      : `line-${it.id || i}`
+    const found = rowByKey.get(key)
+    if (found) {
+      found.lines.push(it)
+      found.quantity += it.quantity
+    } else {
+      const row = { key, item: it, lines: [it], quantity: it.quantity }
+      rowByKey.set(key, row)
+      rows.push(row)
+    }
+  })
   const isActive = !['COMPLETED', 'CANCELLED'].includes(order.status)
 
   return (
@@ -250,21 +317,22 @@ const OrderDetails: React.FC = () => {
         {/* Items */}
         <Card className="md:col-span-2">
           <h2 className="font-semibold text-gray-900 mb-4">
-            Order Items <span className="text-gray-400 font-normal">({billItems.length} active)</span>
+            Order Items <span className="text-gray-400 font-normal">({rows.filter((r) => r.item.status !== 'CANCELLED').length} active)</span>
           </h2>
           {items.length === 0 ? (
             <p className="text-gray-400 text-sm">No items</p>
           ) : (
             <div className="space-y-3">
-              {items.map((item, i) => {
+              {rows.map((row, i) => {
+                const item = row.item
                 const unitPrice = Number(item.unit_price || 0)
                 return (
                   <div
-                    key={item.id || i}
+                    key={row.key || i}
                     className="flex items-start gap-4 p-3 bg-gray-50 rounded-xl"
                   >
                     <div className={`h-8 rounded-lg bg-indigo-100 flex items-center justify-center shrink-0 ${item.weight_grams ? 'px-2 min-w-[2rem]' : 'w-8'}`}>
-                      <span className="text-indigo-700 font-bold text-sm whitespace-nowrap">{item.weight_grams ? formatWeight(item.weight_grams) : item.quantity}</span>
+                      <span className="text-indigo-700 font-bold text-sm whitespace-nowrap">{item.weight_grams ? formatWeight(item.weight_grams) : row.quantity}</span>
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="font-medium text-gray-900">
@@ -276,7 +344,7 @@ const OrderDetails: React.FC = () => {
                     </div>
                     <div className="text-right shrink-0">
                       <p className={`font-semibold ${item.status === 'CANCELLED' ? 'text-gray-400 line-through' : 'text-gray-900'}`}>
-                        {formatCurrency(unitPrice * item.quantity)}
+                        {formatCurrency(unitPrice * row.quantity)}
                       </p>
                       <p className="text-xs text-gray-400">
                         {item.weight_grams ? `${formatCurrency(ratePerKg(unitPrice, item.weight_grams))} / kg` : `${formatCurrency(unitPrice)} each`}
@@ -284,7 +352,7 @@ const OrderDetails: React.FC = () => {
                       {item.status === 'CANCELLED' ? (
                         <span className="text-xs font-semibold text-red-600">Cancelled</span>
                       ) : isActive ? (
-                        <button type="button" disabled={updating} onClick={() => handleCancelItem(item)} className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-red-600 hover:text-red-700 disabled:opacity-50">
+                        <button type="button" disabled={updating} onClick={() => handleCancelGroup(row.lines)} className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-red-600 hover:text-red-700 disabled:opacity-50">
                           <XMarkIcon className="w-3.5 h-3.5" /> Cancel item
                         </button>
                       ) : null}
