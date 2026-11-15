@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { PriceUnit, WeightEntryUnit, formatWeight, priceUnitSuffix, toGrams, weightedAmount } from '../lib/weight'
+import { PriceUnit, WeightEntryUnit, formatWeight, gramsForAmount, priceUnitSuffix, toGrams, weightedAmount } from '../lib/weight'
 import { formatCurrency } from '../lib/utils'
 
 interface WeightEntryModalProps {
@@ -43,6 +43,10 @@ const WeightEntryModal: React.FC<WeightEntryModalProps> = ({
   const [value, setValue] = useState(
     initialGrams ? String(startKg ? initialGrams / 1000 : initialGrams) : '',
   )
+  // Amount in rupees — typing it works out the weight, and typing the weight fills it in
+  const [amountValue, setAmountValue] = useState(
+    initialGrams ? String(weightedAmount(price, unit, initialGrams)) : '',
+  )
   const inputRef = useRef<HTMLInputElement>(null)
   const pieceRef = useRef<HTMLInputElement>(null)
 
@@ -63,6 +67,36 @@ const WeightEntryModal: React.FC<WeightEntryModalProps> = ({
 
   const valid = mode === 'piece' ? pieceValid : weightValid
 
+  // Weight typed / unit changed -> keep the amount box in step
+  const syncAmountFromWeight = (v: string, u: WeightEntryUnit) => {
+    const g = toGrams(v, u)
+    setAmountValue(g > 0 && g <= 100000 ? String(weightedAmount(price, unit, g)) : '')
+  }
+
+  const changeWeight = (v: string) => {
+    setValue(v)
+    syncAmountFromWeight(v, entryUnit)
+  }
+
+  const changeUnit = (u: WeightEntryUnit) => {
+    setEntryUnit(u)
+    syncAmountFromWeight(value, u)
+  }
+
+  // Amount typed -> work out the weight (e.g. Rs 100 at Rs 400/kg = 250 g)
+  const changeAmount = (a: string) => {
+    setAmountValue(a)
+    const g = gramsForAmount(price, unit, parseFloat(a))
+    if (g <= 0) { setValue(''); return }
+    if (g >= 1000 && g % 100 === 0) {
+      setEntryUnit('kg')
+      setValue(String(g / 1000))
+    } else {
+      setEntryUnit('g')
+      setValue(String(g))
+    }
+  }
+
   const pick = (g: number) => {
     // Keep whichever unit reads naturally: whole kg for 1000+, otherwise grams
     if (g >= 1000) {
@@ -72,6 +106,7 @@ const WeightEntryModal: React.FC<WeightEntryModalProps> = ({
       setEntryUnit('g')
       setValue(String(g))
     }
+    setAmountValue(String(weightedAmount(price, unit, g)))
   }
 
   const bumpPieces = (delta: number) => {
@@ -123,7 +158,7 @@ const WeightEntryModal: React.FC<WeightEntryModalProps> = ({
                 min="0"
                 step={entryUnit === 'kg' ? '0.05' : '10'}
                 value={value}
-                onChange={(e) => setValue(e.target.value)}
+                onChange={(e) => changeWeight(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && submit()}
                 placeholder={entryUnit === 'kg' ? 'e.g. 1.5' : 'e.g. 350'}
                 className="flex-1 min-w-0 border border-gray-300 rounded-lg px-3 py-2.5 text-lg"
@@ -133,7 +168,7 @@ const WeightEntryModal: React.FC<WeightEntryModalProps> = ({
                   <button
                     key={u}
                     type="button"
-                    onClick={() => setEntryUnit(u)}
+                    onClick={() => changeUnit(u)}
                     className={`px-4 text-sm font-semibold ${
                       entryUnit === u ? 'bg-indigo-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
                     }`}
@@ -155,6 +190,22 @@ const WeightEntryModal: React.FC<WeightEntryModalProps> = ({
                   {formatWeight(g)}
                 </button>
               ))}
+            </div>
+
+            <label className="block text-sm font-medium text-gray-700 mt-4">Or enter the amount (₹)</label>
+            <div className="relative mt-1">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-lg">₹</span>
+              <input
+                type="number"
+                inputMode="decimal"
+                min="0"
+                step="1"
+                value={amountValue}
+                onChange={(e) => changeAmount(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && submit()}
+                placeholder="e.g. 100"
+                className="w-full border border-gray-300 rounded-lg pl-8 pr-3 py-2.5 text-lg"
+              />
             </div>
 
             <div className="mt-4 rounded-xl bg-indigo-50 p-3">

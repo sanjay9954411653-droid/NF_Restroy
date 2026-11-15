@@ -19,6 +19,13 @@ export function weightedAmount(price: number, unit: PriceUnit | undefined, grams
   return Math.round(perGram * grams * 100) / 100
 }
 
+/** Weight (whole grams) you get for an amount of money, e.g. Rs 100 at Rs 400/kg -> 250 g. */
+export function gramsForAmount(price: number, unit: PriceUnit | undefined, amount: number): number {
+  if (!isWeighed(unit) || !(Number(price) > 0) || !(amount > 0)) return 0
+  const perGram = Number(price) / (unit === 'KG' ? 1000 : 100)
+  return Math.round(amount / perGram)
+}
+
 /** 350 -> "350 g", 1250 -> "1.25 kg" */
 export function formatWeight(grams?: number | null): string {
   const g = Number(grams) || 0
