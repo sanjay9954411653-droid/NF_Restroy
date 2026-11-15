@@ -19,11 +19,12 @@ export const MAX_WEIGHT_GRAMS = 100_000; // 100 kg: catches typos like 25000 kg
 export const isWeighedUnit = (unit?: string | null): unit is 'KG' | '100G' =>
   unit === 'KG' || unit === '100G';
 
-/** Amount for an ordered weight. Same maths and rounding as the client preview. */
+/** Amount for an ordered weight, rounded off to the nearest whole rupee. Same maths as the client preview. */
 export function weightedAmount(price: number | string, unit: PriceUnit | undefined, grams: number): number {
   if (!isWeighedUnit(unit) || !(grams > 0)) return 0;
   const perGram = Number(price) / (unit === 'KG' ? 1000 : 100);
-  return Math.round(perGram * grams * 100) / 100;
+  // Rounded off to the nearest whole rupee (Rs 119.70 -> Rs 120), as is usual for goods sold by weight
+  return Math.round(perGram * grams);
 }
 
 /** 350 -> "350 g", 1250 -> "1.25 kg" */

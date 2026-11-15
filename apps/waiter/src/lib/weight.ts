@@ -12,18 +12,25 @@ export const isWeighed = (unit?: string | null): unit is 'KG' | '100G' =>
 export const priceUnitSuffix = (unit?: string | null): string =>
   unit === 'KG' ? '/ kg' : unit === '100G' ? '/ 100 g' : ''
 
-/** Amount for an ordered weight — same rounding as the server. */
+/** Amount for an ordered weight, rounded off to the nearest rupee — same rounding as the server. */
 export function weightedAmount(price: number, unit: PriceUnit | undefined, grams: number): number {
   if (!isWeighed(unit) || !(grams > 0)) return 0
   const perGram = Number(price) / (unit === 'KG' ? 1000 : 100)
-  return Math.round(perGram * grams * 100) / 100
+  // Rounded off to the nearest whole rupee (Rs 119.70 -> Rs 120), as is usual for goods sold by weight
+  return Math.round(perGram * grams)
 }
 
 /** Weight (whole grams) you get for an amount of money, e.g. Rs 100 at Rs 400/kg -> 250 g. */
 export function gramsForAmount(price: number, unit: PriceUnit | undefined, amount: number): number {
   if (!isWeighed(unit) || !(Number(price) > 0) || !(amount > 0)) return 0
   const perGram = Number(price) / (unit === 'KG' ? 1000 : 100)
-  return Math.round(amount / perGram)
+  const g0 = Math.round(amount / perGram)
+  // Prices are rounded to whole rupees, so look at the grams just either side and pick one whose
+  // price comes out EXACTLY at the typed amount (e.g. Rs 120 at Rs 1050/kg -> 114 g -> Rs 120).
+  for (const g of [g0, g0 - 1, g0 + 1, g0 - 2, g0 + 2]) {
+    if (g > 0 && weightedAmount(price, unit, g) === Math.round(amount)) return g
+  }
+  return g0
 }
 
 /** 350 -> "350 g", 1250 -> "1.25 kg" */
