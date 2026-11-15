@@ -330,9 +330,20 @@ const TableOrderPanel: React.FC<TableOrderPanelProps> = ({
                 </div>
               )}
 
+              {/* Total */}
+              <div className="px-5 py-4 flex items-center justify-between">
+                <span className="text-sm text-gray-500">Total</span>
+                <span className="text-2xl font-bold text-gray-900">
+                  {formatCurrency(grandTotal ?? Number(order.total_amount || 0))}
+                </span>
+              </div>
+            </div>
+
+            {/* Action footer */}
+            <div className="border-t border-gray-100 px-4 pt-4 footer-safe space-y-2 shrink-0">
               {/* Coupon */}
               {!['COMPLETED', 'CANCELLED'].includes(order.status) && items.length > 0 && (
-                <div className="px-5 py-3 border-t border-gray-100">
+                <div>
                   {coupon.code ? (
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-emerald-700 font-medium">
@@ -364,17 +375,6 @@ const TableOrderPanel: React.FC<TableOrderPanelProps> = ({
                 </div>
               )}
 
-              {/* Total */}
-              <div className="px-5 py-4 flex items-center justify-between">
-                <span className="text-sm text-gray-500">Total</span>
-                <span className="text-2xl font-bold text-gray-900">
-                  {formatCurrency(grandTotal ?? Number(order.total_amount || 0))}
-                </span>
-              </div>
-            </div>
-
-            {/* Action footer */}
-            <div className="border-t border-gray-100 px-4 pt-4 footer-safe space-y-2 shrink-0">
               {/* READY → Collect Payment is the single primary action */}
               {order.status === 'READY' && canCollect && (
                 <Button
