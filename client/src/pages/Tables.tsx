@@ -21,7 +21,6 @@ import TableForm from '../components/TableForm'
 import OrderForm from '../components/OrderForm'
 import PaymentForm from '../components/PaymentForm'
 import TableOrderPanel from '../components/TableOrderPanel'
-import BillScreen from '../components/BillScreen'
 import AddItemsModal from '../components/AddItemsModal'
 import { formatRelative } from '../lib/utils'
 import Button from '../components/Button'
@@ -131,8 +130,6 @@ const Tables: React.FC = () => {
   const [newGuestOrder, setNewGuestOrder] = useState(false)                            // POS opened for a separate guest order
   const [addItemsOrder, setAddItemsOrder] = useState<{ id: string; order_number: string } | null>(null) // add items to one guest's order
   const [payOrderId, setPayOrderId] = useState<string | null>(null)
-  const [billOrderId, setBillOrderId] = useState<string | null>(null)               // bill screen for READY
-  const [billTableNumber, setBillTableNumber] = useState<string | undefined>()
   const [panelRefresh, setPanelRefresh] = useState(0)
 
   // Pick-up orders (no table)
@@ -202,7 +199,7 @@ const Tables: React.FC = () => {
     return { total: tables.length, occupied, ready, free, openRevenue }
   }, [tables, pickups, payable])
 
-  // Tap handler — free table → new order; READY table → bill screen; occupied → panel
+  // Tap handler — free table → new order; occupied → panel
   const handleTableTap = (t: TableWithStatus) => {
     if (manageMode) {
       setEditing(t); setFormOpen(true); return
@@ -211,11 +208,6 @@ const Tables: React.FC = () => {
     if (orders.length === 0) {
       setNewGuestOrder(false)
       setOrderForTable(t)
-    } else if (orders.length === 1 && orders[0].status === 'READY') {
-      // Open bill screen first — waiter shows bill, then collects payment
-      setBillOrderId(orders[0].id)
-      setBillTableNumber(t.table_number)
-      setPanelTable(t) // keep panel reference for post-payment cleanup
     } else {
       // One or more guests: open the drawer (with a tab per guest when there are several)
       setPanelOrderId(orders[orders.length - 1].id)
@@ -383,10 +375,7 @@ const Tables: React.FC = () => {
               return (
                 <button
                   key={p.id}
-                  onClick={() => {
-                    if (ready) { setBillOrderId(p.id); setBillTableNumber(undefined); setPickupPanel(p) }
-                    else setPickupPanel(p)
-                  }}
+                  onClick={() => setPickupPanel(p)}
                   className={`text-left bg-white border rounded-2xl p-4 transition-all hover:shadow-md ${
                     ready ? 'border-emerald-300 ring-2 ring-emerald-100' : 'border-gray-200 hover:border-indigo-300'
                   }`}
@@ -430,7 +419,7 @@ const Tables: React.FC = () => {
 
       {/* Occupied table management drawer — hide when bill screen is open.
           Several guests on one table get a tab each (Guest A, Guest B …). */}
-      {panelTable && !billOrderId && !addItemsOrder && (() => {
+      {panelTable && !addItemsOrder && (() => {
         const orders = openOrders(panelTable)
         const selected = orders.find((o) => o.id === panelOrderId) || orders[orders.length - 1]
         if (!selected) return null
@@ -455,10 +444,7 @@ const Tables: React.FC = () => {
             onClose={() => setPanelTable(null)}
             onChanged={() => fetchTables()}
             onAddItems={() => setAddItemsOrder({ id: selected.id, order_number: selected.order_number })}
-            onCollectPayment={() => {
-              setBillOrderId(selected.id)
-              setBillTableNumber(panelTable.table_number)
-            }}
+            onCollectPayment={() => setPayOrderId(selected.id)}
           />
         )
       })()}
@@ -483,7 +469,7 @@ const Tables: React.FC = () => {
       )}
 
       {/* Pick-up order drawer (same actions as a table: items, KOT, bill, payment) */}
-      {pickupPanel && !billOrderId && !addItemsFor && (
+      {pickupPanel && !addItemsFor && (
         <TableOrderPanel
           tableNumber={`#${pickupPanel.order_number.slice(-4)}`}
           kindLabel="Pick-up order"
@@ -492,7 +478,7 @@ const Tables: React.FC = () => {
           onClose={() => setPickupPanel(null)}
           onChanged={() => fetchPickups()}
           onAddItems={() => setAddItemsFor(pickupPanel)}
-          onCollectPayment={() => { setBillOrderId(pickupPanel.id); setBillTableNumber(undefined) }}
+          onCollectPayment={() => setPayOrderId(pickupPanel.id)}
         />
       )}
 
@@ -505,42 +491,21 @@ const Tables: React.FC = () => {
         />
       )}
 
-      {/* Bill screen — shown for READY orders before payment */}
-      {billOrderId && (
-        <BillScreen
-          orderId={billOrderId}
-          tableNumber={billTableNumber}
-          onClose={() => {
-            setBillOrderId(null)
-            setBillTableNumber(undefined)
-            setPickupPanel(null)
-          }}
-          onCompleted={() => {
-            setBillOrderId(null)
-            setBillTableNumber(undefined)
+      {/* Payment window — opened by "Collect Pay" in the table / pick-up drawer.
+          (PaymentForm marks the order COMPLETED itself once it is fully paid.) */}
+      {payOrderId && (
+        <PaymentForm
+          orderId={payOrderId}
+          onClose={() => setPayOrderId(null)}
+          onPaymentSuccess={() => {
+            setPayOrderId(null)
+            toast.success('Payment recorded ✓')
             setPickupPanel(null)
             setPanelRefresh((k) => k + 1)
             // fetchTables closes the table drawer when nobody is left on it, and keeps it open
             // (on the remaining guests) when other guests still have open orders
             fetchTables()
             fetchPickups()
-          }}
-        />
-      )}
-
-      {/* Legacy payment form — for non-READY manual payment from panel */}
-      {payOrderId && (
-        <PaymentForm
-          orderId={payOrderId}
-          onClose={() => setPayOrderId(null)}
-          onPaymentSuccess={async () => {
-            setPayOrderId(null)
-            toast.success('Payment recorded')
-            try {
-              await api.patch(`/orders/${payOrderId}`, { status: 'COMPLETED' })
-            } catch { /* ignore — payment already recorded */ }
-            setPanelRefresh((k) => k + 1)
-            fetchTables()
           }}
         />
       )}
