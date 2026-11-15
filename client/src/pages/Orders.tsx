@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useCallback } from 'react'
+import { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import api, { getErrorMessage } from '../api'
@@ -73,16 +73,62 @@ const Orders: React.FC = () => {
   const [typeFilter, setTypeFilter] = useState<OrderType | 'ALL'>('ALL')
   const [currentPage, setCurrentPage] = useState(1)
 
+  const [hasMoreHistory, setHasMoreHistory] = useState(false)
+  const historyOffset = useRef(100) // how many history rows are loaded so far
+  const [loadingMore, setLoadingMore] = useState(false)
+
+  const OPEN = 'CREATED,ACCEPTED,PREPARING,READY'
+
+  // The server returns at most 100 orders per request, so:
+  //  1) fetch EVERY open order (page by page) so none of them can go missing, and
+  //  2) fetch the newest 100 orders of any status for the Completed / All history.
   const fetchOrders = useCallback(async () => {
     try {
-      const res = await api.get('/orders', { params: { limit: 300 } })
-         setOrders(res.data.data?.items || [])
+      const open: Order[] = []
+      for (let offset = 0; offset < 2000; offset += 100) {
+        const r = await api.get('/orders', { params: { limit: 100, offset, status: OPEN } })
+        const d = r.data.data
+        open.push(...(d?.items || []))
+        if (!d?.hasMore) break
+      }
+      const h = await api.get('/orders', { params: { limit: 100, offset: 0 } })
+      const hist: Order[] = h.data.data?.items || []
+
+      setOrders((prev) => {
+        const fresh = new Map<string, Order>()
+        ;[...open, ...hist].forEach((o) => fresh.set(o.id, o))
+        // keep older history rows the user already loaded with "Load older orders"
+        prev.forEach((o) => {
+          if (!fresh.has(o.id) && (o.status === 'COMPLETED' || o.status === 'CANCELLED')) fresh.set(o.id, o)
+        })
+        return Array.from(fresh.values())
+      })
+      if (historyOffset.current <= 100) setHasMoreHistory(!!h.data.data?.hasMore)
     } catch (err) {
       toast.error(getErrorMessage(err))
     } finally {
       setLoading(false)
     }
   }, [])
+
+  const loadOlder = async () => {
+    setLoadingMore(true)
+    try {
+      const r = await api.get('/orders', { params: { limit: 100, offset: historyOffset.current } })
+      const d = r.data.data
+      const older: Order[] = d?.items || []
+      setOrders((prev) => {
+        const ids = new Set(prev.map((o) => o.id))
+        return [...prev, ...older.filter((o) => !ids.has(o.id))]
+      })
+      historyOffset.current += 100
+      setHasMoreHistory(!!d?.hasMore)
+    } catch (err) {
+      toast.error(getErrorMessage(err))
+    } finally {
+      setLoadingMore(false)
+    }
+  }
 
   useEffect(() => { fetchOrders() }, [fetchOrders])
 
@@ -93,11 +139,15 @@ const Orders: React.FC = () => {
     socket.on('ORDER_UPDATED', onChange)
     socket.on('ORDER_DELETED', onChange)
     socket.on('ORDER_CANCELLED', onChange)
+    socket.on('ORDER_COMPLETED', onChange)
+    socket.on('PAYMENT_COMPLETED', onChange)
     return () => {
       socket.off('ORDER_CREATED', onChange)
       socket.off('ORDER_UPDATED', onChange)
       socket.off('ORDER_DELETED', onChange)
       socket.off('ORDER_CANCELLED', onChange)
+      socket.off('ORDER_COMPLETED', onChange)
+      socket.off('PAYMENT_COMPLETED', onChange)
     }
   }, [socket, fetchOrders])
 
@@ -206,7 +256,7 @@ const Orders: React.FC = () => {
                 tab === t.id ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-200 text-gray-500'
               }`}
             >
-              {counts[t.id]}
+              {counts[t.id]}{hasMoreHistory && (t.id === 'completed' || t.id === 'all') ? '+' : ''}
             </span>
           </button>
         ))}
@@ -370,6 +420,14 @@ const Orders: React.FC = () => {
               </Card>
             )
           })}
+        </div>
+      )}
+
+      {hasMoreHistory && (tab === 'completed' || tab === 'all') && (
+        <div className="flex justify-center">
+          <Button variant="outline" isLoading={loadingMore} onClick={loadOlder}>
+            Load older orders
+          </Button>
         </div>
       )}
 

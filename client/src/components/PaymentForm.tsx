@@ -52,7 +52,7 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
 
   useEffect(() => {
     if (!initialOrderId) {
-      api.get('/orders', { params: { limit: 100 } })
+      api.get('/orders', { params: { limit: 100, status: 'CREATED,ACCEPTED,PREPARING,READY' } })
         .then((res) => {
           const active = (res.data.data?.items || []).filter(
             (o: Order) =>

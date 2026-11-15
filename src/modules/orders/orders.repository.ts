@@ -476,8 +476,8 @@ export class OrdersRepository {
     }
 
     if (statusFilter) {
-      params.push(statusFilter);
-      conditions.push(`status = $${params.length}`);
+      params.push(statusFilter.split(',').map((x) => x.trim()).filter(Boolean));
+      conditions.push(`status::text = ANY($${params.length}::text[])`);
     }
 
     const result = await query(
@@ -514,8 +514,9 @@ export class OrdersRepository {
     }
 
     if (statusFilter) {
-      params.push(statusFilter);
-      conditions.push(`o.status = $${params.length}`);
+      // one status, or several separated by commas (e.g. "CREATED,ACCEPTED,READY")
+      params.push(statusFilter.split(',').map((x) => x.trim()).filter(Boolean));
+      conditions.push(`o.status::text = ANY($${params.length}::text[])`);
     }
 
     params.push(limit, offset);
