@@ -65,6 +65,7 @@ const Payments: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<string>('ALL')
   const [currentPage, setCurrentPage] = useState(1)
   const [markingId, setMarkingId] = useState<string | null>(null)
+  const [totalOnServer, setTotalOnServer] = useState(0)
   const [editing, setEditing] = useState<Payment | null>(null)
   const [period, setPeriod] = useState<Period>('today')
   const [summary, setSummary] = useState<{ total_paid: number; total_pending: number; total_refunded: number; total_count: number } | null>(null)
@@ -75,11 +76,23 @@ const Payments: React.FC = () => {
   const fetchPayments = async () => {
     try {
       const params = period === 'all' ? {} : periodDates(period)
-      const [res, sum] = await Promise.all([
-        api.get('/payments', { params: { limit: 500, ...params } }),
-        api.get('/payments/summary', { params }),
-      ])
-      setPayments(res.data.data?.items || [])
+      // The server returns at most 100 payments per request (it ignores a bigger limit), so
+      // ask page by page until we have them all — otherwise only the newest 100 showed up and
+      // the rest looked "missing" while the totals above still counted them.
+      const PAGE = 100
+      const MAX_ROWS = 5000
+      const all: Payment[] = []
+      let total = 0
+      do {
+        const res = await api.get('/payments', { params: { limit: PAGE, offset: all.length, ...params } })
+        const items: Payment[] = res.data.data?.items || []
+        total = res.data.data?.total ?? items.length
+        all.push(...items)
+        if (items.length === 0) break
+      } while (all.length < total && all.length < MAX_ROWS)
+      const sum = await api.get('/payments/summary', { params })
+      setPayments(all)
+      setTotalOnServer(total)
       setSummary(sum.data.data || null)
     } catch (err) {
       toast.error(getErrorMessage(err))
@@ -248,6 +261,13 @@ const Payments: React.FC = () => {
           </div>
         </div>
       </Card>
+
+      {/* Only shown if a very long period had more payments than the page can hold */}
+      {totalOnServer > payments.length && (
+        <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+          Showing the latest {payments.length} of {totalOnServer} payments. Pick a shorter period to see the rest.
+        </p>
+      )}
 
       {/* Table */}
       {paginated.length === 0 ? (
