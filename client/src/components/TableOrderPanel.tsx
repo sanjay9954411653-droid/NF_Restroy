@@ -23,7 +23,8 @@ import Button from './Button'
 import Badge from './Badge'
 import CancelItemsSheet from './CancelItemsSheet'
 import { printKOT } from './PrintKOT'
-import { printReceipt } from './PrintReceipt'
+import { printBill } from '../lib/billPrint'
+import { couponApi } from '../lib/growthApi'
 import { useGrandTotal } from '../lib/useBillTotal'
 import { useCanCollectPayment } from '../lib/usePaymentAccess'
 import {
@@ -118,8 +119,50 @@ const TableOrderPanel: React.FC<TableOrderPanelProps> = ({
   })
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
-  const grandTotal = useGrandTotal(order, items)
+  // Coupon (staff can apply one before printing the bill / collecting payment)
+  const [coupon, setCoupon] = useState<{ code: string | null; discount: number }>({ code: null, discount: 0 })
+  const [couponInput, setCouponInput] = useState('')
+  const [couponBusy, setCouponBusy] = useState(false)
+  const [couponVersion, setCouponVersion] = useState(0)
+  const grandTotal = useGrandTotal(order, items, couponVersion)
   const canCollect = useCanCollectPayment()
+
+  const loadCoupon = () =>
+    couponApi
+      .forOrder(orderId)
+      .then((res) => setCoupon({ code: res.data.data?.code ?? null, discount: Number(res.data.data?.discount || 0) }))
+      .catch(() => {})
+
+  const applyCoupon = async () => {
+    const code = couponInput.trim()
+    if (!code) return
+    setCouponBusy(true)
+    try {
+      const res = await couponApi.applyToOrder(orderId, code)
+      setCoupon({ code: res.data.data.code, discount: Number(res.data.data.discount || 0) })
+      setCouponInput('')
+      setCouponVersion((v) => v + 1)
+      toast.success('Coupon applied')
+    } catch (err) {
+      toast.error(getErrorMessage(err))
+    } finally {
+      setCouponBusy(false)
+    }
+  }
+
+  const removeCoupon = async () => {
+    setCouponBusy(true)
+    try {
+      await couponApi.removeFromOrder(orderId)
+      setCoupon({ code: null, discount: 0 })
+      setCouponVersion((v) => v + 1)
+      toast.success('Coupon removed')
+    } catch (err) {
+      toast.error(getErrorMessage(err))
+    } finally {
+      setCouponBusy(false)
+    }
+  }
 
   const loadOrder = async () => {
     try {
@@ -139,7 +182,9 @@ const TableOrderPanel: React.FC<TableOrderPanelProps> = ({
 
   useEffect(() => {
     setLoading(true)
+    setCouponInput('')
     loadOrder()
+    loadCoupon()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orderId, refreshKey])
 
@@ -285,6 +330,40 @@ const TableOrderPanel: React.FC<TableOrderPanelProps> = ({
                 </div>
               )}
 
+              {/* Coupon */}
+              {!['COMPLETED', 'CANCELLED'].includes(order.status) && items.length > 0 && (
+                <div className="px-5 py-3 border-t border-gray-100">
+                  {coupon.code ? (
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-emerald-700 font-medium">
+                        Coupon {coupon.code} applied{coupon.discount > 0 ? ` (−${formatCurrency(coupon.discount)})` : ''}
+                      </span>
+                      <button
+                        type="button"
+                        disabled={couponBusy}
+                        onClick={removeCoupon}
+                        className="text-red-600 text-xs font-medium px-2 py-1"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex gap-2">
+                      <input
+                        value={couponInput}
+                        onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
+                        onKeyDown={(e) => { if (e.key === 'Enter') applyCoupon() }}
+                        placeholder="Coupon code"
+                        className="flex-1 min-w-0 rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                      />
+                      <Button variant="outline" onClick={applyCoupon} disabled={couponBusy || !couponInput.trim()}>
+                        Apply
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Total */}
               <div className="px-5 py-4 flex items-center justify-between">
                 <span className="text-sm text-gray-500">Total</span>
@@ -342,7 +421,11 @@ const TableOrderPanel: React.FC<TableOrderPanelProps> = ({
                 <Button
                   variant="outline"
                   leftIcon={<ReceiptPercentIcon className="w-4 h-4" />}
-                  onClick={() => printReceipt(order, items, restaurantName)}
+                  onClick={() =>
+                    printBill(order.id, kindLabel === 'Table' ? tableNumber : undefined).catch((err) =>
+                      toast.error(getErrorMessage(err))
+                    )
+                  }
                 >
                   Print Bill
                 </Button>
