@@ -96,6 +96,26 @@ const TableOrderPanel: React.FC<TableOrderPanelProps> = ({
   const [cancelOpen, setCancelOpen] = useState(false)
   // Cancelled lines stay in the database (audit trail) but are not part of the bill, KOT or total
   const items = allItems.filter((i) => i.status !== 'CANCELLED')
+
+  // The same dish added in several batches is stored as separate lines (each batch is its own
+  // kitchen round). Show it as ONE row with the total quantity; the stored lines are untouched.
+  // By-weight lines are never merged; lines with different notes / modifiers stay separate.
+  const rows: { key: string; item: OrderItem; quantity: number }[] = []
+  const rowByKey = new Map<string, (typeof rows)[number]>()
+  items.forEach((it, i) => {
+    const mods = (it.modifiers || []).map((m) => `${m.modifier_option_name}:${Number(m.price_adjustment || 0)}`).sort().join(',')
+    const key = it.weight_grams
+      ? `line-${it.id || i}`
+      : `${it.menu_item_id}|${Number(it.unit_price || 0)}|${it.special_instructions || ''}|${mods}`
+    const found = rowByKey.get(key)
+    if (found) {
+      found.quantity += it.quantity
+    } else {
+      const row = { key, item: it, quantity: it.quantity }
+      rowByKey.set(key, row)
+      rows.push(row)
+    }
+  })
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const grandTotal = useGrandTotal(order, items)
@@ -222,10 +242,10 @@ const TableOrderPanel: React.FC<TableOrderPanelProps> = ({
                 {items.length === 0 ? (
                   <p className="text-sm text-gray-400 py-4 text-center">No items</p>
                 ) : (
-                  items.map((it, i) => (
+                  rows.map(({ item: it, quantity }, i) => (
                     <div key={it.id || i} className="flex items-start justify-between gap-3 py-2">
                       <div className="flex gap-2 min-w-0">
-                        <span className="text-sm font-bold text-gray-700 shrink-0">{it.weight_grams ? formatWeight(it.weight_grams) : `${it.quantity}×`}</span>
+                        <span className="text-sm font-bold text-gray-700 shrink-0">{it.weight_grams ? formatWeight(it.weight_grams) : `${quantity}×`}</span>
                         <div className="min-w-0">
                           <p className="text-sm text-gray-900 leading-tight">
                             {it.menu_item_name || it.menu_item_id}
@@ -250,7 +270,7 @@ const TableOrderPanel: React.FC<TableOrderPanelProps> = ({
                         </div>
                       </div>
                       <span className="text-sm text-gray-600 shrink-0">
-                        {formatCurrency(Number(it.unit_price || 0) * it.quantity)}
+                        {formatCurrency(Number(it.unit_price || 0) * quantity)}
                       </span>
                     </div>
                   ))
