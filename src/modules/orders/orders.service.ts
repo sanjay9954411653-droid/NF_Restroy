@@ -366,6 +366,9 @@ export class OrdersService {
       throw new NotFoundError('Order not found');
     }
 
+    // Payments only detach from a deleted order (they would still count in revenue), so remove them too:
+    // deleting an order removes it from the restaurant's records completely.
+    await pool.query('DELETE FROM payments WHERE order_id = $1 AND restaurant_id = $2', [orderId, restaurantId]);
     const deleted = await ordersRepository.delete(orderId);
     if (!deleted) {
       throw new NotFoundError('Order not found');

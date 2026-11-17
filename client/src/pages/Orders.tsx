@@ -16,6 +16,7 @@ import Loading from '../components/Loading'
 import { Order, OrderStatus, OrderType } from '../types/order'
 import { formatCurrency, formatRelative } from '../lib/utils'
 import { usePayable } from '../lib/useBillTotal'
+import { useAuth } from '../contexts/AuthContext'
 import {
   PlusIcon,
   MagnifyingGlassIcon,
@@ -25,6 +26,7 @@ import {
   CurrencyDollarIcon,
   XCircleIcon,
   ArrowRightIcon,
+  TrashIcon,
 } from '@heroicons/react/24/outline'
 
 const STATUS_BADGE: Record<OrderStatus, { variant: any; label: string }> = {
@@ -55,6 +57,8 @@ const TABS: { id: Tab; label: string; statuses: OrderStatus[] | null }[] = [
 const ITEMS_PER_PAGE = 12
 
 const Orders: React.FC = () => {
+  const { user } = useAuth()
+  const isAdmin = user?.role === 'ADMIN'
   const navigate = useNavigate()
   const { socket } = useSocket()
 
@@ -197,6 +201,37 @@ const Orders: React.FC = () => {
       await api.patch(`/orders/${order.id}`, { status: action.next })
       setOrders((p) => p.map((o) => (o.id === order.id ? { ...o, status: action.next } : o)))
       toast.success(`Order ${action.next.toLowerCase()}`)
+    } catch (err) {
+      toast.error(getErrorMessage(err))
+    } finally {
+      setBusyId(undefined)
+    }
+  }
+
+  // Admin only: change the note on a finished order (asks for the email OTP when it is turned on)
+  const handleEditRecordedNote = async (order: Order) => {
+    const next = window.prompt('Edit note for this order:', order.special_instructions || '')
+    if (next === null) return
+    setBusyId(order.id)
+    try {
+      await api.patch(`/orders/${order.id}`, { special_instructions: next.trim() })
+      setOrders((p) => p.map((o) => (o.id === order.id ? { ...o, special_instructions: next.trim() } : o)))
+      toast.success('Order updated')
+    } catch (err) {
+      toast.error(getErrorMessage(err))
+    } finally {
+      setBusyId(undefined)
+    }
+  }
+
+  // Admin only: remove a finished order (and its payments) from the restaurant's records
+  const handleDeleteRecorded = async (order: Order) => {
+    if (!confirm(`Delete ${order.order_number} and its payments from your records? This cannot be undone.`)) return
+    setBusyId(order.id)
+    try {
+      await api.delete(`/orders/${order.id}`)
+      setOrders((p) => p.filter((o) => o.id !== order.id))
+      toast.success('Order deleted')
     } catch (err) {
       toast.error(getErrorMessage(err))
     } finally {
@@ -405,6 +440,26 @@ const Orders: React.FC = () => {
                       >
                         <PencilSquareIcon className="w-4 h-4" />
                       </button>
+                    )}
+                    {!isActive && isAdmin && (
+                      <>
+                        <button
+                          onClick={() => handleEditRecordedNote(order)}
+                          disabled={isBusy}
+                          title="Edit note (OTP)"
+                          className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50"
+                        >
+                          <PencilSquareIcon className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteRecorded(order)}
+                          disabled={isBusy}
+                          title="Delete order (OTP)"
+                          className="ml-auto p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
+                        >
+                          <TrashIcon className="w-4 h-4" />
+                        </button>
+                      </>
                     )}
                     {!['COMPLETED', 'CANCELLED'].includes(order.status) && (
                       <button

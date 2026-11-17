@@ -14,7 +14,8 @@ import AddItemsModal from '../components/AddItemsModal'
 import PrintKOT from '../components/PrintKOT'
 import PrintReceipt from '../components/PrintReceipt'
 import { useGrandTotal } from '../lib/useBillTotal'
-import { ArrowLeftIcon, CurrencyDollarIcon, PlusIcon, PrinterIcon, XMarkIcon } from '@heroicons/react/24/outline'
+import { useAuth } from '../contexts/AuthContext'
+import { ArrowLeftIcon, CurrencyDollarIcon, PencilSquareIcon, PlusIcon, PrinterIcon, TrashIcon, XMarkIcon } from '@heroicons/react/24/outline'
 
 const STATUS_BADGE: Record<OrderStatus, { variant: any; label: string }> = {
   CREATED:   { variant: 'default',  label: 'Created' },
@@ -33,6 +34,8 @@ const NEXT_STATUS: Partial<Record<OrderStatus, OrderStatus>> = {
 }
 
 const OrderDetails: React.FC = () => {
+  const { user } = useAuth()
+  const isAdmin = user?.role === 'ADMIN'
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const [order, setOrder] = useState<Order | null>(null)
@@ -150,6 +153,36 @@ const OrderDetails: React.FC = () => {
     }
   }
 
+  const handleEditRecordedNote = async () => {
+    if (!order) return
+    const next = window.prompt('Edit note for this order:', order.special_instructions || '')
+    if (next === null) return
+    setUpdating(true)
+    try {
+      await api.patch(`/orders/${order.id}`, { special_instructions: next.trim() })
+      setOrder({ ...order, special_instructions: next.trim() })
+      toast.success('Order updated')
+    } catch (err) {
+      toast.error(getErrorMessage(err))
+    } finally {
+      setUpdating(false)
+    }
+  }
+
+  const handleDeleteRecorded = async () => {
+    if (!order) return
+    if (!window.confirm(`Delete ${order.order_number} and its payments from your records? This cannot be undone.`)) return
+    setUpdating(true)
+    try {
+      await api.delete(`/orders/${order.id}`)
+      toast.success('Order deleted')
+      navigate('/orders')
+    } catch (err) {
+      toast.error(getErrorMessage(err))
+      setUpdating(false)
+    }
+  }
+
   const handleStatusUpdate = async (newStatus: OrderStatus) => {
     if (!order) return
     setUpdating(true)
@@ -217,6 +250,16 @@ const OrderDetails: React.FC = () => {
           </div>
           <p className="text-sm text-gray-500 mt-0.5">Created {formatDate(order.created_at)}</p>
         </div>
+        {!isActive && isAdmin && (
+          <div className="flex gap-2 flex-wrap">
+            <Button variant="outline" disabled={updating} leftIcon={<PencilSquareIcon className="w-4 h-4" />} onClick={handleEditRecordedNote}>
+              Edit note
+            </Button>
+            <Button variant="outline" disabled={updating} leftIcon={<TrashIcon className="w-4 h-4" />} onClick={handleDeleteRecorded}>
+              Delete order
+            </Button>
+          </div>
+        )}
         {isActive && (
           <div className="flex gap-2 flex-wrap">
             <Button
