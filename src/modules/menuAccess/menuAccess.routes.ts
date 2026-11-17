@@ -20,7 +20,9 @@ const mountScope = (prefix: string, scope: OtpScope, header: string) => {
     res.json(successResponse(await menuAccessService.status(req.user!.userId, req.user!.restaurantId, tok(req), scope)));
   }));
   router.post(`${prefix}/request-otp`, wrap(async (req, res) => {
-    res.json(successResponse(await menuAccessService.requestOtp(req.user!.userId, req.user!.restaurantId, scope)));
+    // Optional body { purpose: 'security' } so the email says it is for changing the admin email
+    const { purpose } = z.object({ purpose: z.enum(['security']).optional() }).parse(req.body ?? {});
+    res.json(successResponse(await menuAccessService.requestOtp(req.user!.userId, req.user!.restaurantId, scope, purpose)));
   }));
   router.post(`${prefix}/verify`, wrap(async (req, res) => {
     const { code } = codeSchema.parse(req.body);

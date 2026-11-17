@@ -3,7 +3,7 @@ import jwt from 'jsonwebtoken';
 import { query } from '@/config/database';
 import { env } from '@/config/env';
 import { BadRequestError, ForbiddenError } from '@/shared/errors/AppError';
-import { isEmailConfigured, sendOtpEmail } from '@/shared/email';
+import { isEmailConfigured, sendOtpEmail, OtpPurpose } from '@/shared/email';
 
 const OTP_TTL_SECONDS = 300;      // code valid 5 minutes
 const RESEND_GAP_SECONDS = 30;
@@ -51,7 +51,8 @@ export const menuAccessService = {
     };
   },
 
-  async requestOtp(userId: string, restaurantId: string, scope: OtpScope = 'menu') {
+  /** `purpose` only changes the email wording; the lock (scope) is unchanged. */
+  async requestOtp(userId: string, restaurantId: string, scope: OtpScope = 'menu', purpose?: OtpPurpose) {
     const email = await getMenuOtpEmail(restaurantId);
     if (!email) throw new BadRequestError('No security email is set for the menu');
 
@@ -71,7 +72,7 @@ export const menuAccessService = {
       [restaurantId, userId, hashCode(restaurantId, code), scope],
     );
 
-    const sent = isEmailConfigured() ? await sendOtpEmail(email, code, OTP_TTL_SECONDS / 60) : false;
+    const sent = isEmailConfigured() ? await sendOtpEmail(email, code, OTP_TTL_SECONDS / 60, scope === 'records' ? 'records' : purpose === 'security' ? 'security' : 'menu') : false;
     if (!sent) {
       // No (working) email provider: print in the server logs so the owner is never locked out.
       console.log(`[${scope}-otp] ${email} -> ${code}`);
