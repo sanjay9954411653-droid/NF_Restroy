@@ -27,6 +27,7 @@ import QRSettings from './pages/QRSettings'
 import TableQRCodes from './pages/TableQRCodes'
 import Branding from './pages/Branding'
 import BillSettings from './pages/BillSettings'
+import Security from './pages/Security'
 import PrinterSettings from './pages/PrinterSettings'
 import PlatformBranding from './pages/PlatformBranding'
 import NotFound from './pages/NotFound'
@@ -169,6 +170,13 @@ function App() {
                 <ProtectedRoute>
                   <Layout>
                     <PrinterSettings />
+                  </Layout>
+                </ProtectedRoute>
+              } />
+              <Route path="/security" element={
+                <ProtectedRoute roles={['ADMIN']}>
+                  <Layout>
+                    <Security />
                   </Layout>
                 </ProtectedRoute>
               } />
