@@ -76,6 +76,10 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => {
     console.debug(`[API] Response: ${response.status}`)
+    // A delete used up its fresh code: forget it so the next delete asks for a new one
+    if (response.config?.method === 'delete' && /\/(payments|orders)\//.test(response.config?.url || '')) {
+      sessionStorage.removeItem('records_otp_token')
+    }
     return response
   },
   async (error: AxiosError) => {
