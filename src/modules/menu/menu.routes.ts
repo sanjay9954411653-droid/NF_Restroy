@@ -2,12 +2,13 @@ import { Router } from 'express';
 import { menuController } from './menu.controller';
 import { authenticate } from '@/shared/middleware/authenticate';
 import { authorize } from '@/shared/middleware/authorize';
+import { requireMenuOtp } from '@/shared/middleware/requireMenuOtp';
 import { checkSubscription } from '@/shared/middleware/checkSubscription';
 
 const router = Router();
 
 // Save a new display order for categories or items
-router.put('/reorder', authenticate, authorize('ADMIN'), checkSubscription, (req, res, next) => menuController.reorder(req, res, next));
+router.put('/reorder', authenticate, authorize('ADMIN'), requireMenuOtp, checkSubscription, (req, res, next) => menuController.reorder(req, res, next));
 
 // Read-only menu overview for authenticated users
 router.get('/', authenticate, (req, res, next) => menuController.getMenu(req, res, next));
@@ -18,17 +19,17 @@ router.get('/stats', authenticate, authorize('ADMIN'), (req, res, next) => menuC
 // Category routes
 router.get('/categories', authenticate, (req, res, next) => menuController.getCategories(req, res, next));
 router.get('/categories/:id', authenticate, (req, res, next) => menuController.getCategory(req, res, next));
-router.post('/categories', authenticate, authorize('ADMIN'), checkSubscription, (req, res, next) => menuController.createCategory(req, res, next));
-router.put('/categories/:id', authenticate, authorize('ADMIN'), checkSubscription, (req, res, next) => menuController.updateCategory(req, res, next));
-router.delete('/categories/:id', authenticate, authorize('ADMIN'), checkSubscription, (req, res, next) => menuController.deleteCategory(req, res, next));
+router.post('/categories', authenticate, authorize('ADMIN'), requireMenuOtp, checkSubscription, (req, res, next) => menuController.createCategory(req, res, next));
+router.put('/categories/:id', authenticate, authorize('ADMIN'), requireMenuOtp, checkSubscription, (req, res, next) => menuController.updateCategory(req, res, next));
+router.delete('/categories/:id', authenticate, authorize('ADMIN'), requireMenuOtp, checkSubscription, (req, res, next) => menuController.deleteCategory(req, res, next));
 
 // Menu item routes
 router.get('/items', authenticate, (req, res, next) => menuController.getMenuItems(req, res, next));
 router.get('/items/:id', authenticate, (req, res, next) => menuController.getMenuItem(req, res, next));
-router.post('/items', authenticate, authorize('ADMIN'), checkSubscription, (req, res, next) => menuController.createMenuItem(req, res, next));
-router.put('/items/:id', authenticate, authorize('ADMIN'), checkSubscription, (req, res, next) => menuController.updateMenuItem(req, res, next));
+router.post('/items', authenticate, authorize('ADMIN'), requireMenuOtp, checkSubscription, (req, res, next) => menuController.createMenuItem(req, res, next));
+router.put('/items/:id', authenticate, authorize('ADMIN'), requireMenuOtp, checkSubscription, (req, res, next) => menuController.updateMenuItem(req, res, next));
 // Waiter / reception / kitchen can flip a ready-made item in or out of batch (nothing else)
 router.put('/items/:id/ready-stock', authenticate, authorize('ADMIN', 'WAITER', 'RECEPTION', 'KITCHEN'), (req, res, next) => menuController.setReadyStock(req, res, next));
-router.delete('/items/:id', authenticate, authorize('ADMIN'), checkSubscription, (req, res, next) => menuController.deleteMenuItem(req, res, next));
+router.delete('/items/:id', authenticate, authorize('ADMIN'), requireMenuOtp, checkSubscription, (req, res, next) => menuController.deleteMenuItem(req, res, next));
 
 export default router;

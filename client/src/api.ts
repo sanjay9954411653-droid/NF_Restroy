@@ -59,6 +59,8 @@ async function refreshAccessToken(): Promise<string | null> {
 api.interceptors.request.use(
   (config) => {
     console.debug(`[API] ${config.method?.toUpperCase()} ${config.url}`)
+    const menuToken = sessionStorage.getItem('menu_otp_token')
+    if (menuToken) config.headers['X-Menu-Token'] = menuToken
     return config
   },
   (error) => {

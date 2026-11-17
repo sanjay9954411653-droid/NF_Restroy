@@ -12,6 +12,7 @@ import Dashboard from './pages/Dashboard'
 import Orders from './pages/Orders'
 import Tables from './pages/Tables'
 import Menu from './pages/Menu'
+import MenuOtpGate from './components/MenuOtpGate'
 import Reports from './pages/Reports'
 import Payments from './pages/Payments'
 import OrderDetails from './pages/OrderDetails'
@@ -109,7 +110,7 @@ function App() {
               <Route path="/menu" element={
                 <ProtectedRoute>
                   <Layout>
-                    <Menu />
+                    <MenuOtpGate><Menu /></MenuOtpGate>
                   </Layout>
                 </ProtectedRoute>
               } />

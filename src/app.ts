@@ -6,6 +6,7 @@ import authRoutes from '@/modules/auth/auth.routes';
 import restaurantsRoutes from '@/modules/restaurants/restaurants.routes';
 import tablesRoutes from '@/modules/tables/tables.routes';
 import menuRoutes from '@/modules/menu/menu.routes';
+import menuAccessRoutes from '@/modules/menuAccess/menuAccess.routes';
 import ordersRoutes from '@/modules/orders/orders.routes';
 import paymentsRoutes from '@/modules/payments/payments.routes';
 import inventoryRoutes from '@/modules/inventory/inventory.routes';
@@ -98,6 +99,7 @@ export function createApp(): Express {
   app.use('/api/v1/restaurants', restaurantsRoutes);
   app.use('/api/v1/tables', tablesRoutes);
   app.use('/api/v1/menus', menuRoutes);
+  app.use('/api/v1/menu-access', menuAccessRoutes);
   app.use('/api/v1/orders', ordersRoutes);
   app.use('/api/v1/payments', paymentsRoutes);
   app.use('/api/v1/inventory', inventoryRoutes);
