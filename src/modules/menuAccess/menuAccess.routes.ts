@@ -25,9 +25,9 @@ router.post('/verify', wrap(async (req, res) => {
   res.json(successResponse(await menuAccessService.verify(req.user!.userId, req.user!.restaurantId, code)));
 }));
 
-router.put('/phone', wrap(async (req, res) => {
-  const { phone } = z.object({ phone: z.string().max(20) }).parse(req.body);
-  res.json(successResponse(await menuAccessService.setPhone(req.user!.userId, req.user!.restaurantId, phone, token(req))));
+router.put('/email', wrap(async (req, res) => {
+  const { email } = z.object({ email: z.string().max(255) }).parse(req.body);
+  res.json(successResponse(await menuAccessService.setEmail(req.user!.userId, req.user!.restaurantId, email, token(req))));
 }));
 
 export default router;

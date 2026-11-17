@@ -12,13 +12,13 @@ const TOKEN_KEY = 'menu_otp_token'
 interface Status {
   required: boolean
   verified: boolean
-  phone_masked: string | null
-  sms_configured: boolean
+  email_masked: string | null
+  email_configured: boolean
 }
 
 /**
- * Wraps the Menu page. When the restaurant has a security phone number set,
- * an ADMIN must enter an OTP (sent to that number) before the page opens.
+ * Wraps the Menu page. When the restaurant has a security email set,
+ * an ADMIN must enter an OTP (sent to that email) before the page opens.
  */
 const MenuOtpGate: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useAuth()
@@ -29,9 +29,9 @@ const MenuOtpGate: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [verifying, setVerifying] = useState(false)
   const [sentNote, setSentNote] = useState<string | null>(null)
   const [code, setCode] = useState('')
-  const [phone, setPhone] = useState('')
-  const [showPhoneForm, setShowPhoneForm] = useState(false)
-  const [savingPhone, setSavingPhone] = useState(false)
+  const [email, setEmail] = useState('')
+  const [showEmailForm, setShowEmailForm] = useState(false)
+  const [savingEmail, setSavingEmail] = useState(false)
 
   const loadStatus = useCallback(async () => {
     try {
@@ -57,7 +57,7 @@ const MenuOtpGate: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     setSending(true)
     try {
       const res = await api.post('/menu-access/request-otp')
-      setSentNote(res.data.data.sent ? `Code sent to ${res.data.data.phone_masked}` : (res.data.data.note || 'Code generated'))
+      setSentNote(res.data.data.sent ? `Code sent to ${res.data.data.email_masked}` : (res.data.data.note || 'Code generated'))
       toast.success('OTP requested')
     } catch (err) {
       toast.error(getErrorMessage(err))
@@ -80,19 +80,19 @@ const MenuOtpGate: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     }
   }
 
-  const savePhone = async () => {
-    setSavingPhone(true)
+  const saveEmail = async () => {
+    setSavingEmail(true)
     try {
-      await api.put('/menu-access/phone', { phone })
-      toast.success(phone.trim() ? 'Security phone saved' : 'Menu OTP turned off')
-      setShowPhoneForm(false)
-      setPhone('')
-      if (!phone.trim()) sessionStorage.removeItem(TOKEN_KEY)
+      await api.put('/menu-access/email', { email })
+      toast.success(email.trim() ? 'Security email saved' : 'Menu OTP turned off')
+      setShowEmailForm(false)
+      setEmail('')
+      if (!email.trim()) sessionStorage.removeItem(TOKEN_KEY)
       await loadStatus()
     } catch (err) {
       toast.error(getErrorMessage(err))
     } finally {
-      setSavingPhone(false)
+      setSavingEmail(false)
     }
   }
 
@@ -105,7 +105,7 @@ const MenuOtpGate: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             <div className="text-4xl">🔐</div>
             <h2 className="text-lg font-bold text-gray-900">Menu is locked</h2>
             <p className="text-sm text-gray-500">
-              Enter the OTP sent to the main admin phone {status.phone_masked}.
+              Enter the OTP emailed to the main admin: {status.email_masked}.
             </p>
             <Button onClick={sendOtp} isLoading={sending} fullWidth variant="outline">
               {sentNote ? 'Resend OTP' : 'Send OTP'}
@@ -133,28 +133,30 @@ const MenuOtpGate: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     <>
       <div className="flex items-center justify-end gap-2 mb-2 text-xs">
         {status?.required ? (
-          <span className="text-emerald-600">🔒 Menu OTP on ({status.phone_masked})</span>
+          <span className="text-emerald-600">🔒 Menu OTP on ({status.email_masked})</span>
         ) : (
           <span className="text-gray-500">Menu OTP is off</span>
         )}
-        <button type="button" className="text-indigo-600 font-medium" onClick={() => setShowPhoneForm((v) => !v)}>
+        <button type="button" className="text-indigo-600 font-medium" onClick={() => setShowEmailForm((v) => !v)}>
           {status?.required ? 'Change / turn off' : 'Turn on'}
         </button>
       </div>
-      {showPhoneForm && (
+      {showEmailForm && (
         <Card padding="sm" className="mb-3">
           <div className="space-y-2">
             <Input
-              label="Main admin phone number"
-              inputMode="tel"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              placeholder="e.g. 9876543210"
-              hint={status?.required ? 'Leave empty and save to turn OTP off.' : 'OTP will be sent to this number to open the menu.'}
+              label="Main admin email"
+              type="email"
+              inputMode="email"
+              autoComplete="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="e.g. owner@gmail.com"
+              hint={status?.required ? 'Leave empty and save to turn OTP off.' : 'An OTP will be emailed here to open the menu.'}
             />
             <div className="flex gap-2">
-              <Button size="sm" onClick={savePhone} isLoading={savingPhone}>Save</Button>
-              <Button size="sm" variant="ghost" onClick={() => setShowPhoneForm(false)}>Cancel</Button>
+              <Button size="sm" onClick={saveEmail} isLoading={savingEmail}>Save</Button>
+              <Button size="sm" variant="ghost" onClick={() => setShowEmailForm(false)}>Cancel</Button>
             </div>
           </div>
         </Card>

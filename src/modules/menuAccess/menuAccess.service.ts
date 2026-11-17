@@ -3,30 +3,28 @@ import jwt from 'jsonwebtoken';
 import { query } from '@/config/database';
 import { env } from '@/config/env';
 import { BadRequestError, ForbiddenError } from '@/shared/errors/AppError';
-import { isSmsConfigured, sendOtpSms } from '@/shared/sms';
+import { isEmailConfigured, sendOtpEmail } from '@/shared/email';
 
 const OTP_TTL_SECONDS = 300;      // code valid 5 minutes
 const RESEND_GAP_SECONDS = 30;
 const MAX_ATTEMPTS = 5;
 const TOKEN_TTL = '60m';          // menu stays unlocked for 60 minutes
 
-function normalizePhone(raw: string): string {
-  const digits = raw.replace(/\D/g, '');
-  if (digits.length === 10) return `+91${digits}`;
-  return `+${digits}`;
-}
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
-function mask(phone: string): string {
-  return phone.length > 4 ? `${phone.slice(0, 3)}••••••${phone.slice(-3)}` : phone;
+function mask(email: string): string {
+  const [name, domain] = email.split('@');
+  if (!domain) return email;
+  return `${name.slice(0, Math.min(2, name.length))}••••@${domain}`;
 }
 
 function hashCode(restaurantId: string, code: string): string {
   return crypto.createHash('sha256').update(`${restaurantId}:${code}:${env.JWT_SECRET}`).digest('hex');
 }
 
-export async function getMenuOtpPhone(restaurantId: string): Promise<string | null> {
-  const r = await query('SELECT menu_otp_phone FROM restaurants WHERE id = $1', [restaurantId]);
-  return r.rows[0]?.menu_otp_phone || null;
+export async function getMenuOtpEmail(restaurantId: string): Promise<string | null> {
+  const r = await query('SELECT menu_otp_email FROM restaurants WHERE id = $1', [restaurantId]);
+  return r.rows[0]?.menu_otp_email || null;
 }
 
 export function isMenuTokenValid(token: string | undefined, userId: string, restaurantId: string): boolean {
@@ -41,18 +39,18 @@ export function isMenuTokenValid(token: string | undefined, userId: string, rest
 
 export const menuAccessService = {
   async status(userId: string, restaurantId: string, token?: string) {
-    const phone = await getMenuOtpPhone(restaurantId);
+    const email = await getMenuOtpEmail(restaurantId);
     return {
-      required: Boolean(phone),
-      verified: !phone || isMenuTokenValid(token, userId, restaurantId),
-      phone_masked: phone ? mask(phone) : null,
-      sms_configured: isSmsConfigured(),
+      required: Boolean(email),
+      verified: !email || isMenuTokenValid(token, userId, restaurantId),
+      email_masked: email ? mask(email) : null,
+      email_configured: isEmailConfigured(),
     };
   },
 
   async requestOtp(userId: string, restaurantId: string) {
-    const phone = await getMenuOtpPhone(restaurantId);
-    if (!phone) throw new BadRequestError('No security phone number is set for the menu');
+    const email = await getMenuOtpEmail(restaurantId);
+    if (!email) throw new BadRequestError('No security email is set for the menu');
 
     const last = await query(
       `SELECT created_at FROM menu_access_otps WHERE restaurant_id = $1 AND user_id = $2 ORDER BY created_at DESC LIMIT 1`,
@@ -70,15 +68,15 @@ export const menuAccessService = {
       [restaurantId, userId, hashCode(restaurantId, code)],
     );
 
-    const sent = isSmsConfigured() ? await sendOtpSms(phone, code) : false;
+    const sent = isEmailConfigured() ? await sendOtpEmail(email, code, OTP_TTL_SECONDS / 60) : false;
     if (!sent) {
-      // No (working) SMS provider: print in the server logs so the owner is never locked out.
-      console.log(`[menu-otp] ${phone} -> ${code}`);
+      // No (working) email provider: print in the server logs so the owner is never locked out.
+      console.log(`[menu-otp] ${email} -> ${code}`);
     }
     return {
-      phone_masked: mask(phone),
+      email_masked: mask(email),
       sent,
-      note: sent ? undefined : 'SMS provider not configured or failed. The code was printed in the server logs.',
+      note: sent ? undefined : 'Email is not set up on the server or failed. The code was printed in the server logs.',
     };
   },
 
@@ -106,20 +104,19 @@ export const menuAccessService = {
     return { token, expires_in_minutes: 60 };
   },
 
-  /** Set / change / remove the security phone. Changing or removing an existing one needs a verified token. */
-  async setPhone(userId: string, restaurantId: string, rawPhone: string, token?: string) {
-    const existing = await getMenuOtpPhone(restaurantId);
+  /** Set / change / remove the security email. Changing or removing an existing one needs a verified token. */
+  async setEmail(userId: string, restaurantId: string, rawEmail: string, token?: string) {
+    const existing = await getMenuOtpEmail(restaurantId);
     if (existing && !isMenuTokenValid(token, userId, restaurantId)) {
-      throw new ForbiddenError('Verify with an OTP first to change the security phone number');
+      throw new ForbiddenError('Verify with an OTP first to change the security email');
     }
-    const trimmed = (rawPhone || '').trim();
+    const trimmed = (rawEmail || '').trim().toLowerCase();
     if (!trimmed) {
-      await query('UPDATE restaurants SET menu_otp_phone = NULL WHERE id = $1', [restaurantId]);
-      return { phone_masked: null };
+      await query('UPDATE restaurants SET menu_otp_email = NULL WHERE id = $1', [restaurantId]);
+      return { email_masked: null };
     }
-    const phone = normalizePhone(trimmed);
-    if (phone.replace('+', '').length < 10) throw new BadRequestError('Enter a valid phone number');
-    await query('UPDATE restaurants SET menu_otp_phone = $2 WHERE id = $1', [restaurantId, phone]);
-    return { phone_masked: mask(phone) };
+    if (!EMAIL_RE.test(trimmed) || trimmed.length > 255) throw new BadRequestError('Enter a valid email address');
+    await query('UPDATE restaurants SET menu_otp_email = $2 WHERE id = $1', [restaurantId, trimmed]);
+    return { email_masked: mask(trimmed) };
   },
 };
