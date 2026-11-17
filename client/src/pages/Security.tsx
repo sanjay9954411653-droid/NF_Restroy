@@ -27,6 +27,7 @@ const Security: React.FC = () => {
   const [code, setCode] = useState('')
   const [note, setNote] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [action, setAction] = useState<'change' | 'off' | null>(null)
 
   const load = useCallback(async () => {
     try {
@@ -54,11 +55,21 @@ const Security: React.FC = () => {
     setNote(d.sent ? `Code sent to ${d.email_masked}` : (d.note || 'Code generated'))
   })
 
-  const verify = () => run(async () => {
+  const startAction = (a: 'change' | 'off') => {
+    setAction(a); setCode(''); setEmail(''); setNote(null)
+    sendOtp()   // the code goes to the current email right away
+  }
+
+  const cancelAction = () => { setAction(null); setCode(''); setEmail(''); setNote(null) }
+
+  // Fresh code for every change: verify it, then apply the change with the new token
+  const confirmAction = () => run(async () => {
     const res = await api.post('/menu-access/verify', { code })
     sessionStorage.setItem(TOKEN_KEY, res.data.data.token)
-    setCode('')
-    setNote(null)
+    await api.put('/menu-access/email', { email: action === 'off' ? '' : email })
+    toast.success(action === 'off' ? 'Admin email removed' : 'Admin email changed')
+    sessionStorage.removeItem(TOKEN_KEY)
+    cancelAction()
     await load()
   })
 
@@ -66,12 +77,10 @@ const Security: React.FC = () => {
     await api.put('/menu-access/email', { email: value })
     toast.success(value.trim() ? 'Admin email saved' : 'Admin email removed')
     setEmail('')
-    if (!value.trim()) sessionStorage.removeItem(TOKEN_KEY)
     await load()
   })
 
   const hasEmail = Boolean(status?.required)
-  const unlocked = Boolean(status?.verified)
 
   return (
     <div className="max-w-lg space-y-4 animate-fade-in">
@@ -104,10 +113,30 @@ const Security: React.FC = () => {
             </>
           )}
 
-          {hasEmail && !unlocked && (
+          {hasEmail && !action && (
+            <div className="flex gap-2 flex-wrap border-t border-gray-100 pt-3">
+              <Button variant="outline" onClick={() => startAction('change')} disabled={busy}>Change Gmail</Button>
+              <Button variant="outline" onClick={() => startAction('off')} disabled={busy}>Turn OTP off</Button>
+            </div>
+          )}
+
+          {hasEmail && action && (
             <div className="space-y-3 border-t border-gray-100 pt-3">
-              <p className="text-sm text-gray-500">To change or remove it, first confirm with a code sent to the current email.</p>
-              <Button variant="outline" onClick={sendOtp} isLoading={busy}>{note ? 'Resend code' : 'Send code'}</Button>
+              <p className="text-sm font-medium text-gray-800">
+                {action === 'change' ? 'Change admin Gmail' : 'Turn OTP off'}
+              </p>
+              {action === 'change' && (
+                <Input
+                  label="New admin Gmail"
+                  type="email"
+                  inputMode="email"
+                  autoComplete="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="e.g. newowner@gmail.com"
+                />
+              )}
+              <p className="text-sm text-gray-500">Enter the code sent to the current email ({status?.email_masked}) to confirm.</p>
               {note && <p className="text-xs text-gray-500">{note}</p>}
               <Input
                 label="6-digit code"
@@ -117,26 +146,12 @@ const Security: React.FC = () => {
                 onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
                 placeholder="••••••"
               />
-              <Button onClick={verify} isLoading={busy} disabled={code.length !== 6}>Confirm</Button>
-            </div>
-          )}
-
-          {hasEmail && unlocked && (
-            <div className="space-y-3 border-t border-gray-100 pt-3">
-              <Input
-                label="New admin Gmail"
-                type="email"
-                inputMode="email"
-                autoComplete="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="e.g. newowner@gmail.com"
-              />
               <div className="flex gap-2 flex-wrap">
-                <Button onClick={() => save(email)} isLoading={busy} disabled={!email.trim()}>Change email</Button>
-                <Button variant="outline" onClick={() => { if (window.confirm('Remove the admin email? Menu and records will no longer need an OTP.')) save('') }} disabled={busy}>
-                  Remove (turn OTP off)
+                <Button onClick={confirmAction} isLoading={busy} disabled={code.length !== 6 || (action === 'change' && !email.trim())}>
+                  {action === 'change' ? 'Confirm & change' : 'Confirm & turn off'}
                 </Button>
+                <Button variant="outline" onClick={sendOtp} disabled={busy}>Resend code</Button>
+                <Button variant="ghost" onClick={cancelAction} disabled={busy}>Cancel</Button>
               </div>
             </div>
           )}
