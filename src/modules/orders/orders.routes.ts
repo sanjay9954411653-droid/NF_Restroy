@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { requireRecordsOtp } from '@/shared/middleware/requireRecordsOtp';
 import { ordersController } from './orders.controller';
 import { authenticate } from '@/shared/middleware/authenticate';
 import { authorize } from '@/shared/middleware/authorize';
@@ -19,16 +20,16 @@ router.post('/:id/kot-reprint', authenticate, checkSubscription, authorize('WAIT
 router.post('/:id/kot-release', authenticate, checkSubscription, authorize('WAITER', 'KITCHEN', 'ADMIN', 'RECEPTION'), (req, res, next) => ordersController.kotRelease(req, res, next));
 router.get('/:id', authenticate, (req, res, next) => ordersController.getById(req, res, next));
 // Append items to an existing open order (running tab)
-router.post('/:id/items', authenticate, checkSubscription, (req, res, next) => ordersController.addItems(req, res, next));
+router.post('/:id/items', authenticate, checkSubscription, requireRecordsOtp('order-edit'), (req, res, next) => ordersController.addItems(req, res, next));
 // Mark items as sent to the kitchen printer (so a later top-up doesn't reprint them)
 router.post('/:id/kot-printed', authenticate, checkSubscription, authorize('KITCHEN', 'ADMIN'), (req, res, next) => ordersController.markKotPrinted(req, res, next));
 // Waiter marks food as served (whole order or one round)
 router.post('/:id/serve', authenticate, checkSubscription, authorize('WAITER', 'ADMIN', 'RECEPTION', 'KITCHEN'), (req, res, next) => ordersController.serve(req, res, next));
 // Update a single item's status (PENDING → PREPARING → DONE) — kitchen use
-router.patch('/:id/items/:itemId', authenticate, checkSubscription, authorize('KITCHEN', 'ADMIN', 'WAITER', 'RECEPTION'), (req, res, next) => ordersController.updateItemStatus(req, res, next));
+router.patch('/:id/items/:itemId', authenticate, checkSubscription, authorize('KITCHEN', 'ADMIN', 'WAITER', 'RECEPTION'), requireRecordsOtp('order-edit'), (req, res, next) => ordersController.updateItemStatus(req, res, next));
 // Accept both PUT and PATCH for status updates (frontend compatibility)
-router.put('/:id', authenticate, checkSubscription, authorize('KITCHEN', 'ADMIN', 'WAITER', 'RECEPTION'), (req, res, next) => ordersController.update(req, res, next));
-router.patch('/:id', authenticate, checkSubscription, authorize('KITCHEN', 'ADMIN', 'WAITER', 'RECEPTION'), (req, res, next) => ordersController.update(req, res, next));
-router.delete('/:id', authenticate, checkSubscription, authorize('ADMIN'), (req, res, next) => ordersController.delete(req, res, next));
+router.put('/:id', authenticate, checkSubscription, authorize('KITCHEN', 'ADMIN', 'WAITER', 'RECEPTION'), requireRecordsOtp('order-edit'), (req, res, next) => ordersController.update(req, res, next));
+router.patch('/:id', authenticate, checkSubscription, authorize('KITCHEN', 'ADMIN', 'WAITER', 'RECEPTION'), requireRecordsOtp('order-edit'), (req, res, next) => ordersController.update(req, res, next));
+router.delete('/:id', authenticate, checkSubscription, authorize('ADMIN'), requireRecordsOtp('order-delete'), (req, res, next) => ordersController.delete(req, res, next));
 
 export default router;

@@ -5,6 +5,7 @@
 // retries the request, instead of logging the owner out just for leaving
 // the tab open for a bit. Only a truly invalid session logs out.
 import axios, { AxiosError } from 'axios'
+import { askRecordsOtp } from './lib/recordsOtp'
 
 const api = axios.create({
      baseURL: import.meta.env.VITE_API_URL || '/api/v1',
@@ -61,6 +62,8 @@ api.interceptors.request.use(
     console.debug(`[API] ${config.method?.toUpperCase()} ${config.url}`)
     const menuToken = sessionStorage.getItem('menu_otp_token')
     if (menuToken) config.headers['X-Menu-Token'] = menuToken
+    const recordsToken = sessionStorage.getItem('records_otp_token')
+    if (recordsToken) config.headers['X-Records-Token'] = recordsToken
     return config
   },
   (error) => {
@@ -88,6 +91,18 @@ api.interceptors.response.use(
       }
       console.warn('[API] Unauthorized - logging out')
       logoutHandler?.()
+      return Promise.reject(error)
+    }
+
+    // Editing / deleting a recorded order or payment needs the admin-email OTP: ask, then retry the same request.
+    if (error.response?.status === 403 && (error.response.data as any)?.error?.code === 'RECORDS_OTP_REQUIRED' && !originalRequest._retriedAfterOtp) {
+      originalRequest._retriedAfterOtp = true
+      sessionStorage.removeItem('records_otp_token')
+      const token = await askRecordsOtp()
+      if (token) {
+        originalRequest.headers['X-Records-Token'] = token
+        return api(originalRequest)
+      }
       return Promise.reject(error)
     }
 

@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { requireRecordsOtp } from '@/shared/middleware/requireRecordsOtp';
 import { paymentsController } from './payments.controller';
 import { authenticate } from '@/shared/middleware/authenticate';
 import { authorize } from '@/shared/middleware/authorize';
@@ -41,8 +42,8 @@ router.get('/order/:orderId/balance', authenticate, async (req: AuthenticatedReq
 });
 
 router.get('/:id', authenticate, (req, res, next) => paymentsController.getById(req, res, next));
-router.put('/:id', authenticate, authorize('ADMIN'), checkSubscription, (req, res, next) => paymentsController.update(req, res, next));
-router.patch('/:id', authenticate, authorize('ADMIN'), checkSubscription, (req, res, next) => paymentsController.update(req, res, next));
-router.delete('/:id', authenticate, authorize('ADMIN'), checkSubscription, (req, res, next) => paymentsController.delete(req, res, next));
+router.put('/:id', authenticate, authorize('ADMIN'), checkSubscription, requireRecordsOtp('payment-edit'), (req, res, next) => paymentsController.update(req, res, next));
+router.patch('/:id', authenticate, authorize('ADMIN'), checkSubscription, requireRecordsOtp('payment-edit'), (req, res, next) => paymentsController.update(req, res, next));
+router.delete('/:id', authenticate, authorize('ADMIN'), checkSubscription, requireRecordsOtp('payment-delete'), (req, res, next) => paymentsController.delete(req, res, next));
 
 export default router;

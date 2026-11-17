@@ -13,6 +13,7 @@ import Orders from './pages/Orders'
 import Tables from './pages/Tables'
 import Menu from './pages/Menu'
 import MenuOtpGate from './components/MenuOtpGate'
+import RecordsOtpModal from './components/RecordsOtpModal'
 import Reports from './pages/Reports'
 import Payments from './pages/Payments'
 import OrderDetails from './pages/OrderDetails'
@@ -67,6 +68,7 @@ function App() {
           <SubscriptionProvider>
             <FeaturesProvider>
             <div className="min-h-screen bg-gray-50">
+              <RecordsOtpModal />
               <Routes>
               {/* Public marketing landing page */}
               <Route path="/" element={<LandingPage />} />

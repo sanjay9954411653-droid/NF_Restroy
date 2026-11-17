@@ -10,6 +10,9 @@ const RESEND_GAP_SECONDS = 30;
 const MAX_ATTEMPTS = 5;
 const TOKEN_TTL = '60m';          // menu stays unlocked for 60 minutes
 
+export type OtpScope = 'menu' | 'records';
+const TOKEN_TYP: Record<OtpScope, string> = { menu: 'menu-otp', records: 'records-otp' };
+
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
 function mask(email: string): string {
@@ -27,51 +30,51 @@ export async function getMenuOtpEmail(restaurantId: string): Promise<string | nu
   return r.rows[0]?.menu_otp_email || null;
 }
 
-export function isMenuTokenValid(token: string | undefined, userId: string, restaurantId: string): boolean {
+export function isMenuTokenValid(token: string | undefined, userId: string, restaurantId: string, scope: OtpScope = 'menu'): boolean {
   if (!token) return false;
   try {
     const p = jwt.verify(token, env.JWT_SECRET, { algorithms: ['HS256'] }) as any;
-    return p.typ === 'menu-otp' && p.uid === userId && p.rid === restaurantId;
+    return p.typ === TOKEN_TYP[scope] && p.uid === userId && p.rid === restaurantId;
   } catch {
     return false;
   }
 }
 
 export const menuAccessService = {
-  async status(userId: string, restaurantId: string, token?: string) {
+  async status(userId: string, restaurantId: string, token?: string, scope: OtpScope = 'menu') {
     const email = await getMenuOtpEmail(restaurantId);
     return {
       required: Boolean(email),
-      verified: !email || isMenuTokenValid(token, userId, restaurantId),
+      verified: !email || isMenuTokenValid(token, userId, restaurantId, scope),
       email_masked: email ? mask(email) : null,
       email_configured: isEmailConfigured(),
     };
   },
 
-  async requestOtp(userId: string, restaurantId: string) {
+  async requestOtp(userId: string, restaurantId: string, scope: OtpScope = 'menu') {
     const email = await getMenuOtpEmail(restaurantId);
     if (!email) throw new BadRequestError('No security email is set for the menu');
 
     const last = await query(
-      `SELECT created_at FROM menu_access_otps WHERE restaurant_id = $1 AND user_id = $2 ORDER BY created_at DESC LIMIT 1`,
-      [restaurantId, userId],
+      `SELECT created_at FROM menu_access_otps WHERE restaurant_id = $1 AND user_id = $2 AND scope = $3 ORDER BY created_at DESC LIMIT 1`,
+      [restaurantId, userId, scope],
     );
     if (last.rows[0] && Date.now() - new Date(last.rows[0].created_at).getTime() < RESEND_GAP_SECONDS * 1000) {
       throw new BadRequestError(`Please wait ${RESEND_GAP_SECONDS} seconds before requesting another code`);
     }
 
     const code = String(crypto.randomInt(0, 1_000_000)).padStart(6, '0');
-    await query(`UPDATE menu_access_otps SET consumed_at = NOW() WHERE restaurant_id = $1 AND user_id = $2 AND consumed_at IS NULL`, [restaurantId, userId]);
+    await query(`UPDATE menu_access_otps SET consumed_at = NOW() WHERE restaurant_id = $1 AND user_id = $2 AND scope = $3 AND consumed_at IS NULL`, [restaurantId, userId, scope]);
     await query(
-      `INSERT INTO menu_access_otps (restaurant_id, user_id, code_hash, expires_at)
-       VALUES ($1, $2, $3, NOW() + INTERVAL '${OTP_TTL_SECONDS} seconds')`,
-      [restaurantId, userId, hashCode(restaurantId, code)],
+      `INSERT INTO menu_access_otps (restaurant_id, user_id, code_hash, scope, expires_at)
+       VALUES ($1, $2, $3, $4, NOW() + INTERVAL '${OTP_TTL_SECONDS} seconds')`,
+      [restaurantId, userId, hashCode(restaurantId, code), scope],
     );
 
     const sent = isEmailConfigured() ? await sendOtpEmail(email, code, OTP_TTL_SECONDS / 60) : false;
     if (!sent) {
       // No (working) email provider: print in the server logs so the owner is never locked out.
-      console.log(`[menu-otp] ${email} -> ${code}`);
+      console.log(`[${scope}-otp] ${email} -> ${code}`);
     }
     return {
       email_masked: mask(email),
@@ -80,12 +83,12 @@ export const menuAccessService = {
     };
   },
 
-  async verify(userId: string, restaurantId: string, code: string) {
+  async verify(userId: string, restaurantId: string, code: string, scope: OtpScope = 'menu') {
     const r = await query(
       `SELECT id, code_hash, attempts FROM menu_access_otps
-       WHERE restaurant_id = $1 AND user_id = $2 AND consumed_at IS NULL AND expires_at > NOW()
+       WHERE restaurant_id = $1 AND user_id = $2 AND scope = $3 AND consumed_at IS NULL AND expires_at > NOW()
        ORDER BY created_at DESC LIMIT 1`,
-      [restaurantId, userId],
+      [restaurantId, userId, scope],
     );
     const row = r.rows[0];
     if (!row) throw new BadRequestError('Code expired. Please request a new one.');
@@ -100,14 +103,14 @@ export const menuAccessService = {
       throw new BadRequestError('Incorrect code');
     }
     await query(`UPDATE menu_access_otps SET consumed_at = NOW() WHERE id = $1`, [row.id]);
-    const token = jwt.sign({ typ: 'menu-otp', uid: userId, rid: restaurantId }, env.JWT_SECRET, { expiresIn: TOKEN_TTL as any, algorithm: 'HS256' });
+    const token = jwt.sign({ typ: TOKEN_TYP[scope], uid: userId, rid: restaurantId }, env.JWT_SECRET, { expiresIn: TOKEN_TTL as any, algorithm: 'HS256' });
     return { token, expires_in_minutes: 60 };
   },
 
   /** Set / change / remove the security email. Changing or removing an existing one needs a verified token. */
   async setEmail(userId: string, restaurantId: string, rawEmail: string, token?: string) {
     const existing = await getMenuOtpEmail(restaurantId);
-    if (existing && !isMenuTokenValid(token, userId, restaurantId)) {
+    if (existing && !isMenuTokenValid(token, userId, restaurantId, 'menu')) {
       throw new ForbiddenError('Verify with an OTP first to change the security email');
     }
     const trimmed = (rawEmail || '').trim().toLowerCase();
