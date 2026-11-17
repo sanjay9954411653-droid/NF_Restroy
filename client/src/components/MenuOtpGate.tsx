@@ -32,6 +32,9 @@ const MenuOtpGate: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [email, setEmail] = useState('')
   const [showEmailForm, setShowEmailForm] = useState(false)
   const [savingEmail, setSavingEmail] = useState(false)
+  const [changeCode, setChangeCode] = useState('')
+  const [changeNote, setChangeNote] = useState<string | null>(null)
+  const [sendingChange, setSendingChange] = useState(false)
 
   const loadStatus = useCallback(async () => {
     try {
@@ -80,13 +83,41 @@ const MenuOtpGate: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     }
   }
 
+  // Changing or turning off an existing security email needs a FRESH code sent to the current email
+  const needsCode = Boolean(status?.required)
+
+  const sendChangeCode = async () => {
+    setSendingChange(true)
+    try {
+      const res = await api.post('/menu-access/request-otp', { purpose: 'security' })
+      const d = res.data.data
+      setChangeNote(d.sent ? `Code sent to ${d.email_masked}` : (d.note || 'Code generated'))
+    } catch (err) {
+      toast.error(getErrorMessage(err))
+    } finally {
+      setSendingChange(false)
+    }
+  }
+
+  const openEmailForm = () => {
+    if (showEmailForm) { setShowEmailForm(false); return }
+    setEmail(''); setChangeCode(''); setChangeNote(null)
+    setShowEmailForm(true)
+    if (needsCode) sendChangeCode()   // the code goes to the current email right away
+  }
+
   const saveEmail = async () => {
     setSavingEmail(true)
     try {
+      if (needsCode) {
+        const v = await api.post('/menu-access/verify', { code: changeCode })
+        sessionStorage.setItem(TOKEN_KEY, v.data.data.token)
+      }
       await api.put('/menu-access/email', { email })
       toast.success(email.trim() ? 'Security email saved' : 'Menu OTP turned off')
       setShowEmailForm(false)
       setEmail('')
+      setChangeCode('')
       if (!email.trim()) sessionStorage.removeItem(TOKEN_KEY)
       await loadStatus()
     } catch (err) {
@@ -137,7 +168,7 @@ const MenuOtpGate: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         ) : (
           <span className="text-gray-500">Menu OTP is off</span>
         )}
-        <button type="button" className="text-indigo-600 font-medium" onClick={() => setShowEmailForm((v) => !v)}>
+        <button type="button" className="text-indigo-600 font-medium" onClick={openEmailForm}>
           {status?.required ? 'Change / turn off' : 'Turn on'}
         </button>
       </div>
@@ -152,10 +183,29 @@ const MenuOtpGate: React.FC<{ children: React.ReactNode }> = ({ children }) => {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="e.g. owner@gmail.com"
-              hint={status?.required ? 'Leave empty and save to turn OTP off.' : 'An OTP will be emailed here to open the menu.'}
+              hint={status?.required ? 'New email. Leave empty to turn OTP off.' : 'An OTP will be emailed here to open the menu.'}
             />
+            {needsCode && (
+              <div className="space-y-1">
+                <p className="text-xs text-gray-500">
+                  For safety, enter the code sent to the current admin email ({status?.email_masked}).
+                  {changeNote ? ` ${changeNote}.` : ''}
+                </p>
+                <Input
+                  label="6-digit code"
+                  inputMode="numeric"
+                  maxLength={6}
+                  value={changeCode}
+                  onChange={(e) => setChangeCode(e.target.value.replace(/\D/g, ''))}
+                  placeholder="••••••"
+                />
+                <button type="button" onClick={sendChangeCode} disabled={sendingChange} className="text-xs text-indigo-600 font-medium disabled:opacity-50">
+                  {sendingChange ? 'Sending…' : 'Resend code'}
+                </button>
+              </div>
+            )}
             <div className="flex gap-2">
-              <Button size="sm" onClick={saveEmail} isLoading={savingEmail}>Save</Button>
+              <Button size="sm" onClick={saveEmail} isLoading={savingEmail} disabled={needsCode && changeCode.length !== 6}>Save</Button>
               <Button size="sm" variant="ghost" onClick={() => setShowEmailForm(false)}>Cancel</Button>
             </div>
           </div>
