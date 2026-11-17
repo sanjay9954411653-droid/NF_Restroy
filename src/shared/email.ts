@@ -54,15 +54,37 @@ async function sendEmail(to: string, subject: string, text: string, html: string
   }
 }
 
-/** Sends the 6-digit menu access code. Returns true only if the provider accepted the email. */
-export async function sendOtpEmail(to: string, code: string, minutesValid = 5): Promise<boolean> {
+export type OtpPurpose = 'menu' | 'records' | 'security';
+
+// What each code is for — shown in the email subject and body so the owner knows what they are approving.
+const OTP_COPY: Record<OtpPurpose, { subject: string; heading: string; line: string }> = {
+  menu: {
+    subject: 'code to unlock the Menu page',
+    heading: 'Unlock the Menu page',
+    line: 'Use this code to unlock the Menu page and edit menu items and prices:',
+  },
+  records: {
+    subject: 'code to edit or delete a record',
+    heading: 'Edit or delete a record',
+    line: 'Someone is trying to change or delete a recorded order or payment. Use this code to allow it:',
+  },
+  security: {
+    subject: 'code to change the admin email',
+    heading: 'Change the admin email',
+    line: 'Use this code to change or remove the admin email that receives these codes:',
+  },
+};
+
+/** Sends a 6-digit security code, worded for what it unlocks. Returns true only if the provider accepted the email. */
+export async function sendOtpEmail(to: string, code: string, minutesValid = 5, purpose: OtpPurpose = 'menu'): Promise<boolean> {
   if (!isEmailConfigured()) return false;
-  const text = `Your menu access code is ${code}.\nIt is valid for ${minutesValid} minutes. If you did not ask for it, ignore this email.`;
+  const c = OTP_COPY[purpose] || OTP_COPY.menu;
+  const text = `${c.heading}\n\n${c.line}\n\n${code}\n\nIt is valid for ${minutesValid} minutes. If you did not ask for it, ignore this email and do not share the code.`;
   const html =
     `<div style="font-family:Arial,sans-serif;max-width:420px;margin:auto;padding:24px">` +
-    `<h2 style="margin:0 0 8px">Menu access code</h2>` +
-    `<p style="color:#555;margin:0 0 16px">Use this code to unlock the Menu page:</p>` +
+    `<h2 style="margin:0 0 8px">${c.heading}</h2>` +
+    `<p style="color:#555;margin:0 0 16px">${c.line}</p>` +
     `<p style="font-size:32px;letter-spacing:8px;font-weight:bold;margin:0 0 16px">${code}</p>` +
-    `<p style="color:#888;font-size:13px;margin:0">Valid for ${minutesValid} minutes. If you did not ask for it, ignore this email.</p></div>`;
-  return sendEmail(to, `${code} is your menu access code`, text, html);
+    `<p style="color:#888;font-size:13px;margin:0">Valid for ${minutesValid} minutes. If you did not ask for it, ignore this email and do not share the code.</p></div>`;
+  return sendEmail(to, `${code} is your ${c.subject}`, text, html);
 }

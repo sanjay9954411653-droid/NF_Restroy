@@ -11,7 +11,8 @@ export function isSmsConfigured(): boolean {
   return ['msg91', 'fast2sms', 'twilio'].includes((process.env.SMS_PROVIDER || '').toLowerCase());
 }
 
-export async function sendOtpSms(phoneE164: string, code: string): Promise<boolean> {
+/** `purpose` finishes the sentence "Your code to ___ is 123456" — say what the code is for. */
+export async function sendOtpSms(phoneE164: string, code: string, purpose = 'verify your phone number'): Promise<boolean> {
   const provider = (process.env.SMS_PROVIDER || '').toLowerCase();
   const digits = phoneE164.replace(/\D/g, '');
   const local10 = digits.slice(-10);
@@ -33,7 +34,7 @@ export async function sendOtpSms(phoneE164: string, code: string): Promise<boole
     if (provider === 'twilio') {
       const sid = process.env.TWILIO_ACCOUNT_SID || '';
       const auth = Buffer.from(`${sid}:${process.env.TWILIO_AUTH_TOKEN || ''}`).toString('base64');
-      const body = new URLSearchParams({ To: phoneE164, From: process.env.TWILIO_FROM || '', Body: `Your menu access code is ${code}. Valid for 5 minutes.` });
+      const body = new URLSearchParams({ To: phoneE164, From: process.env.TWILIO_FROM || '', Body: `Your code to ${purpose} is ${code}. Valid for 5 minutes. Do not share it.` });
       const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
         method: 'POST',
         headers: { Authorization: `Basic ${auth}`, 'Content-Type': 'application/x-www-form-urlencoded' },
