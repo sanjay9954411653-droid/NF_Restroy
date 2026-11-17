@@ -94,7 +94,7 @@ const OrderDetails: React.FC = () => {
       : lastActive
         ? `Cancel ${itemName}? This is the last active item, so the order will also be closed.`
         : `Cancel ${itemName} only? The other ${billItems.length - 1} item(s) will remain on this order.`
-    if (!window.confirm(confirmText)) return
+    if (!window.confirm(confirmText + (order.status === 'COMPLETED' ? '\n\nThis order is already paid: the bill goes down and the recorded payment is reduced to match.' : ''))) return
     setUpdating(true)
     try {
       await api.patch(`/orders/${order.id}/items/${item.id}`, wholeLine ? { status: 'CANCELLED' } : { status: 'CANCELLED', cancel_quantity: cancelQty })
@@ -130,7 +130,7 @@ const OrderDetails: React.FC = () => {
       : lastActive
         ? `Cancel ${itemName}? This is the last active item, so the order will also be closed.`
         : `Cancel all ${totalQty} ${itemName}? The other items will remain on this order.`
-    if (!window.confirm(confirmText)) return
+    if (!window.confirm(confirmText + (order.status === 'COMPLETED' ? '\n\nThis order is already paid: the bill goes down and the recorded payment is reduced to match.' : ''))) return
     setUpdating(true)
     try {
       let remaining = n
@@ -394,7 +394,7 @@ const OrderDetails: React.FC = () => {
                       </p>
                       {item.status === 'CANCELLED' ? (
                         <span className="text-xs font-semibold text-red-600">Cancelled</span>
-                      ) : isActive ? (
+                      ) : (isActive || (isAdmin && order.status === 'COMPLETED')) ? (
                         <button type="button" disabled={updating} onClick={() => handleCancelGroup(row.lines)} className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-red-600 hover:text-red-700 disabled:opacity-50">
                           <XMarkIcon className="w-3.5 h-3.5" /> Cancel item
                         </button>

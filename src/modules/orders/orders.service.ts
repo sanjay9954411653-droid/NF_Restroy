@@ -344,6 +344,32 @@ export class OrdersService {
     return updated;
   }
 
+  /**
+   * After an item is cancelled on a paid order the bill shrinks. Bring the recorded payments down to the
+   * new bill (newest first): a payment that is no longer needed is marked REFUNDED, a partly needed one is reduced.
+   */
+  private async reconcilePaymentsToBill(orderId: string, restaurantId: string, order: Order): Promise<void> {
+    const payable = order.status === 'CANCELLED'
+      ? 0
+      : await getOrderPayableTotal((t, p) => pool.query(t, p), restaurantId, Number(order.total_amount || 0), orderId);
+    const paid = await pool.query(
+      `SELECT id, amount::float8 AS amount FROM payments
+       WHERE order_id = $1 AND restaurant_id = $2 AND status = 'PAID' ORDER BY created_at DESC`,
+      [orderId, restaurantId],
+    );
+    let excess = Math.round((paid.rows.reduce((s: number, r: any) => s + r.amount, 0) - payable) * 100) / 100;
+    for (const p of paid.rows) {
+      if (excess <= 0.005) break;
+      if (p.amount <= excess + 0.005) {
+        await pool.query(`UPDATE payments SET status = 'REFUNDED' WHERE id = $1`, [p.id]);
+        excess = Math.round((excess - p.amount) * 100) / 100;
+      } else {
+        await pool.query(`UPDATE payments SET amount = $2 WHERE id = $1`, [p.id, Math.round((p.amount - excess) * 100) / 100]);
+        excess = 0;
+      }
+    }
+  }
+
   private validateStatusTransition(currentStatus: string, requestedStatus: string): void {
     const transitions: Record<string, string[]> = {
       CREATED: ['ACCEPTED', 'CANCELLED'],
@@ -393,6 +419,7 @@ export class OrdersService {
     restaurantId: string,
     status: 'PENDING' | 'PREPARING' | 'DONE' | 'CANCELLED',
     cancelQuantity?: number,
+    allowCompleted = false,
   ): Promise<{ item: UpdatedOrderItem; orderAutoAdvanced: boolean; order?: Order; roundReady?: { round: number; order_number: string; table_number: string | null } }> {
     // Verify order belongs to this restaurant
     const order = await ordersRepository.findById(orderId);
@@ -400,12 +427,18 @@ export class OrdersService {
       throw new NotFoundError('Order not found');
     }
 
-    if (['COMPLETED', 'CANCELLED'].includes(order.status)) {
+    // Admin correction of a finished (paid) order: only cancelling a line is allowed
+    const correctingCompleted = order.status === 'COMPLETED' && status === 'CANCELLED' && allowCompleted;
+    if (['COMPLETED', 'CANCELLED'].includes(order.status) && !correctingCompleted) {
       throw new BadRequestError('Cannot update items on a completed or cancelled order');
     }
 
     if (status === 'CANCELLED') {
-      const cancelled = await ordersRepository.cancelOrderItem(orderId, itemId, restaurantId, cancelQuantity);
+      const cancelled = await ordersRepository.cancelOrderItem(orderId, itemId, restaurantId, cancelQuantity, correctingCompleted);
+      if (correctingCompleted) {
+        await this.reconcilePaymentsToBill(orderId, restaurantId, cancelled.order);
+        return { item: cancelled.item, orderAutoAdvanced: false, order: cancelled.order };
+      }
       // Cancelling the last unfinished dish can leave only finished ones: the order is then READY
       let cancelledOrder: Order = cancelled.order;
       let advanced = false;

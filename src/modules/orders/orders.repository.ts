@@ -631,6 +631,7 @@ export class OrdersRepository {
     itemId: string,
     restaurantId: string,
     cancelQuantity?: number,
+    allowCompleted = false,
   ): Promise<{ item: UpdatedOrderItem; order: Order; remainingItems: number }> {
     const client = await pool.connect();
     try {
@@ -643,7 +644,7 @@ export class OrdersRepository {
       if (!orderRow || orderRow.restaurant_id !== restaurantId) {
         throw new NotFoundError('Order not found');
       }
-      if (['COMPLETED', 'CANCELLED'].includes(orderRow.status)) {
+      if (orderRow.status === 'CANCELLED' || (orderRow.status === 'COMPLETED' && !allowCompleted)) {
         throw new BadRequestError('Cannot cancel an item on a closed order');
       }
 

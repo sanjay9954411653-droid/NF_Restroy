@@ -354,7 +354,7 @@ export class OrdersController {
       await assertOrderAccess(req.user, orderId);
       const { status, cancel_quantity } = UpdateOrderItemStatusSchema.parse(req.body);
 
-      const result = await ordersService.updateItemStatus(orderId, itemId, restaurantId, status, cancel_quantity);
+      const result = await ordersService.updateItemStatus(orderId, itemId, restaurantId, status, cancel_quantity, req.user?.role === 'ADMIN');
 
       // A cancelled line item changes the bill total; notify all connected screens.
       if (status === 'CANCELLED' && result.order) {
