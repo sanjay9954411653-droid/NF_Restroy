@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import api, { getErrorMessage } from '../api'
 import { useAuth } from '../contexts/AuthContext'
@@ -29,12 +30,6 @@ const MenuOtpGate: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [verifying, setVerifying] = useState(false)
   const [sentNote, setSentNote] = useState<string | null>(null)
   const [code, setCode] = useState('')
-  const [email, setEmail] = useState('')
-  const [showEmailForm, setShowEmailForm] = useState(false)
-  const [savingEmail, setSavingEmail] = useState(false)
-  const [changeCode, setChangeCode] = useState('')
-  const [changeNote, setChangeNote] = useState<string | null>(null)
-  const [sendingChange, setSendingChange] = useState(false)
 
   const loadStatus = useCallback(async () => {
     try {
@@ -51,6 +46,14 @@ const MenuOtpGate: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     if (!isAdmin) { setLoading(false); return }
     loadStatus()
   }, [isAdmin, loadStatus])
+
+  // The menu is only unlocked while this page is open: leaving it (or closing the tab) locks it again,
+  // so the next visit asks for a new code.
+  useEffect(() => {
+    const relock = () => { try { sessionStorage.removeItem(TOKEN_KEY) } catch { /* storage blocked */ } }
+    window.addEventListener('pagehide', relock)
+    return () => { window.removeEventListener('pagehide', relock); relock() }
+  }, [])
 
   // Non-admins (or if status can't be loaded) pass straight through; the server still protects menu changes.
   if (!isAdmin) return <>{children}</>
@@ -80,50 +83,6 @@ const MenuOtpGate: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       toast.error(getErrorMessage(err))
     } finally {
       setVerifying(false)
-    }
-  }
-
-  // Changing or turning off an existing security email needs a FRESH code sent to the current email
-  const needsCode = Boolean(status?.required)
-
-  const sendChangeCode = async () => {
-    setSendingChange(true)
-    try {
-      const res = await api.post('/menu-access/request-otp', { purpose: 'security' })
-      const d = res.data.data
-      setChangeNote(d.sent ? `Code sent to ${d.email_masked}` : (d.note || 'Code generated'))
-    } catch (err) {
-      toast.error(getErrorMessage(err))
-    } finally {
-      setSendingChange(false)
-    }
-  }
-
-  const openEmailForm = () => {
-    if (showEmailForm) { setShowEmailForm(false); return }
-    setEmail(''); setChangeCode(''); setChangeNote(null)
-    setShowEmailForm(true)
-    if (needsCode) sendChangeCode()   // the code goes to the current email right away
-  }
-
-  const saveEmail = async () => {
-    setSavingEmail(true)
-    try {
-      if (needsCode) {
-        const v = await api.post('/menu-access/verify', { code: changeCode })
-        sessionStorage.setItem(TOKEN_KEY, v.data.data.token)
-      }
-      await api.put('/menu-access/email', { email })
-      toast.success(email.trim() ? 'Security email saved' : 'Menu OTP turned off')
-      setShowEmailForm(false)
-      setEmail('')
-      setChangeCode('')
-      if (!email.trim()) sessionStorage.removeItem(TOKEN_KEY)
-      await loadStatus()
-    } catch (err) {
-      toast.error(getErrorMessage(err))
-    } finally {
-      setSavingEmail(false)
     }
   }
 
@@ -159,58 +118,18 @@ const MenuOtpGate: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     )
   }
 
-  // Unlocked (or OTP not set up): show page + small security control
+  // Unlocked (or OTP not set up): show the page. The admin email is managed on the Security page only.
   return (
     <>
       <div className="flex items-center justify-end gap-2 mb-2 text-xs">
         {status?.required ? (
           <span className="text-emerald-600">🔒 Menu OTP on ({status.email_masked})</span>
         ) : (
-          <span className="text-gray-500">Menu OTP is off</span>
+          <span className="text-gray-500">
+            Menu OTP is off — <Link to="/security" className="text-indigo-600 font-medium">turn it on in Security</Link>
+          </span>
         )}
-        <button type="button" className="text-indigo-600 font-medium" onClick={openEmailForm}>
-          {status?.required ? 'Change / turn off' : 'Turn on'}
-        </button>
       </div>
-      {showEmailForm && (
-        <Card padding="sm" className="mb-3">
-          <div className="space-y-2">
-            <Input
-              label="Main admin email"
-              type="email"
-              inputMode="email"
-              autoComplete="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="e.g. owner@gmail.com"
-              hint={status?.required ? 'New email. Leave empty to turn OTP off.' : 'An OTP will be emailed here to open the menu.'}
-            />
-            {needsCode && (
-              <div className="space-y-1">
-                <p className="text-xs text-gray-500">
-                  For safety, enter the code sent to the current admin email ({status?.email_masked}).
-                  {changeNote ? ` ${changeNote}.` : ''}
-                </p>
-                <Input
-                  label="6-digit code"
-                  inputMode="numeric"
-                  maxLength={6}
-                  value={changeCode}
-                  onChange={(e) => setChangeCode(e.target.value.replace(/\D/g, ''))}
-                  placeholder="••••••"
-                />
-                <button type="button" onClick={sendChangeCode} disabled={sendingChange} className="text-xs text-indigo-600 font-medium disabled:opacity-50">
-                  {sendingChange ? 'Sending…' : 'Resend code'}
-                </button>
-              </div>
-            )}
-            <div className="flex gap-2">
-              <Button size="sm" onClick={saveEmail} isLoading={savingEmail} disabled={needsCode && changeCode.length !== 6}>Save</Button>
-              <Button size="sm" variant="ghost" onClick={() => setShowEmailForm(false)}>Cancel</Button>
-            </div>
-          </div>
-        </Card>
-      )}
       {children}
     </>
   )
