@@ -50,7 +50,7 @@ const Security: React.FC = () => {
   }
 
   const sendOtp = () => run(async () => {
-    const res = await api.post('/menu-access/request-otp')
+    const res = await api.post('/menu-access/request-otp', { purpose: 'security' })
     const d = res.data.data
     setNote(d.sent ? `Code sent to ${d.email_masked}` : (d.note || 'Code generated'))
   })
