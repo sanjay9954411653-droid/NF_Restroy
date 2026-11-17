@@ -40,6 +40,24 @@ export function isMenuTokenValid(token: string | undefined, userId: string, rest
   }
 }
 
+/**
+ * Like isMenuTokenValid, but the code must have been verified only moments ago (`maxAgeSec`).
+ * Used for the dangerous actions (delete a payment/order, change the admin email) so each one
+ * needs its own fresh code instead of riding on a code entered earlier in the hour.
+ */
+export function isTokenFresh(token: string | undefined, userId: string, restaurantId: string, scope: OtpScope, maxAgeSec: number): boolean {
+  if (!token) return false;
+  try {
+    const p = jwt.verify(token, env.JWT_SECRET, { algorithms: ['HS256'] }) as any;
+    if (p.typ !== TOKEN_TYP[scope] || p.uid !== userId || p.rid !== restaurantId) return false;
+    return typeof p.iat === 'number' && Date.now() / 1000 - p.iat <= maxAgeSec;
+  } catch {
+    return false;
+  }
+}
+
+export const FRESH_CODE_SECONDS = 180; // a code verified in the last 3 minutes counts as "fresh"
+
 export const menuAccessService = {
   async status(userId: string, restaurantId: string, token?: string, scope: OtpScope = 'menu') {
     const email = await getMenuOtpEmail(restaurantId);
@@ -111,8 +129,8 @@ export const menuAccessService = {
   /** Set / change / remove the security email. Changing or removing an existing one needs a verified token. */
   async setEmail(userId: string, restaurantId: string, rawEmail: string, token?: string) {
     const existing = await getMenuOtpEmail(restaurantId);
-    if (existing && !isMenuTokenValid(token, userId, restaurantId, 'menu')) {
-      throw new ForbiddenError('Verify with an OTP first to change the security email');
+    if (existing && !isTokenFresh(token, userId, restaurantId, 'menu', FRESH_CODE_SECONDS)) {
+      throw new ForbiddenError('Enter a fresh OTP code to change or turn off the security email');
     }
     const trimmed = (rawEmail || '').trim().toLowerCase();
     if (!trimmed) {
