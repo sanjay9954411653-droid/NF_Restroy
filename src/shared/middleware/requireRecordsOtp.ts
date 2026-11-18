@@ -24,6 +24,12 @@ export const requireRecordsOtp = (kind: Kind) =>
         const table = kind === 'payment-edit' ? 'payments' : 'orders';
         const r = await query(`SELECT status FROM ${table} WHERE id = $1 AND restaurant_id = $2`, [req.params.id, restaurantId]);
         const status = r.rows[0]?.status;
+        // The payment screen re-sends "status: COMPLETED" after paying, but the server has already completed
+        // the order. Repeating the status it already has changes nothing, so it must not ask for a code.
+        if (kind === 'order-edit') {
+          const keys = Object.keys(req.body || {});
+          if (keys.length === 1 && keys[0] === 'status' && req.body.status === status) return next();
+        }
         isRecorded = kind === 'payment-edit'
           ? status === 'PAID' || status === 'REFUNDED'
           : status === 'COMPLETED' || status === 'CANCELLED';
