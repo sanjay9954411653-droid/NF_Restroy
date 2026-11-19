@@ -49,7 +49,7 @@ const TopItemsReport: React.FC<{ refreshKey?: number }> = ({ refreshKey = 0 }) =
   const latest = useRef(0)
 
   const load = useCallback(async () => {
-    const params: Record<string, string | number> = { limit: 10, sort, by_table: 1 }
+    const params: Record<string, string | number> = { limit: 1000, sort, by_table: 1 }
     let label = 'All time'
     if (range !== 'all') {
       const { from, to } = range === 'custom' ? { from: customFrom, to: customTo } : rangeDates(range)
@@ -101,7 +101,7 @@ const TopItemsReport: React.FC<{ refreshKey?: number }> = ({ refreshKey = 0 }) =
         it.total_revenue,
         tablesText(it),
       ]),
-      totals: ['', `Top ${items.length} items`, totalSold, '', totalRevenue, ''],
+      totals: ['', `All ${items.length} items`, totalSold, '', totalRevenue, ''],
       money: [4],
     },
   ]
@@ -279,7 +279,7 @@ const TopItemsReport: React.FC<{ refreshKey?: number }> = ({ refreshKey = 0 }) =
                 <tfoot>
                   <tr>
                     <td />
-                    <td className="text-xs text-gray-400">Top {items.length} items</td>
+                    <td className="text-xs text-gray-400">All {items.length} items</td>
                     <td className="text-right text-xs text-gray-500">{totalSold}</td>
                     <td className="text-right text-xs font-semibold text-gray-700">{formatCurrency(totalRevenue)}</td>
                     <td />

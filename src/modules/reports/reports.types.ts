@@ -6,7 +6,7 @@ const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD');
 // today's date so the list starts fresh every day, in the owner's own timezone.
 export const TopItemsQuerySchema = z
   .object({
-    limit: z.preprocess((value) => Number(value), z.number().int().min(1).max(50).default(10)),
+    limit: z.preprocess((value) => Number(value), z.number().int().min(1).max(1000).default(10)),
     // Rank by units sold (default) or by money made
     sort: z.enum(['quantity', 'revenue']).default('quantity'),
     // Also return, for each item, which tables ordered it
